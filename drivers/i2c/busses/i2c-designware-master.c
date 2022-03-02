@@ -818,6 +818,24 @@ static void i2c_dw_unprepare_recovery(struct i2c_adapter *adap)
 	i2c_dw_init_master(dev);
 }
 
+static int i2c_custom_scl_recovery(struct i2c_adapter *adap)
+{
+	i2c_dw_prepare_recovery(adap);
+	i2c_dw_unprepare_recovery(adap);
+	return 0;
+}
+
+static int i2c_dw_custom_init_recovery_info(struct dw_i2c_dev *dev)
+{
+	struct i2c_bus_recovery_info *rinfo = &dev->rinfo;
+	struct i2c_adapter *adap = &dev->adapter;
+
+	rinfo->recover_bus = i2c_custom_scl_recovery;
+	adap->bus_recovery_info = rinfo;
+
+	return 0;
+}
+
 static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 {
 	struct i2c_bus_recovery_info *rinfo = &dev->rinfo;
@@ -914,7 +932,7 @@ int i2c_dw_probe_master(struct dw_i2c_dev *dev)
 		return ret;
 	}
 
-	ret = i2c_dw_init_recovery_info(dev);
+	ret = i2c_dw_custom_init_recovery_info(dev);
 	if (ret)
 		return ret;
 
