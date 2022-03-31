@@ -813,11 +813,28 @@ static void i2c_dw_unprepare_recovery(struct i2c_adapter *adap)
 	i2c_dw_init_master(dev);
 }
 
+static int i2c_custom_scl_recovery(struct i2c_adapter *adap)
+{
+	i2c_dw_prepare_recovery(adap);
+	i2c_dw_unprepare_recovery(adap);
+	return 0;
+}
+
 static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 {
 	struct i2c_bus_recovery_info *rinfo = &dev->rinfo;
 	struct i2c_adapter *adap = &dev->adapter;
 	struct gpio_desc *gpio;
+
+	switch (dev->flags & MODEL_MASK) {
+	case MODEL_SOCFPGA:
+		rinfo->recover_bus = i2c_custom_scl_recovery;
+		break;
+	default:
+		rinfo->recover_bus = i2c_generic_scl_recovery;
+		break;
+	}
+	adap->bus_recovery_info = rinfo;
 
 	gpio = devm_gpiod_get_optional(dev->dev, "scl", GPIOD_OUT_HIGH);
 	if (IS_ERR_OR_NULL(gpio))
@@ -830,10 +847,8 @@ static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 		return PTR_ERR(gpio);
 	rinfo->sda_gpiod = gpio;
 
-	rinfo->recover_bus = i2c_generic_scl_recovery;
 	rinfo->prepare_recovery = i2c_dw_prepare_recovery;
 	rinfo->unprepare_recovery = i2c_dw_unprepare_recovery;
-	adap->bus_recovery_info = rinfo;
 
 	dev_info(dev->dev, "running with gpio recovery mode! scl%s",
 		 rinfo->sda_gpiod ? ",sda" : "");
