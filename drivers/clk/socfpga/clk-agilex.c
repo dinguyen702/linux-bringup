@@ -256,6 +256,7 @@ static const struct stratix10_perip_c_clock agilex_main_perip_c_clks[] = {
 };
 
 static const struct stratix10_perip_cnt_clock agilex_main_perip_cnt_clks[] = {
+	{ AGILEX_L3_MAIN_FREE_CLK, "l3_main_free_clk", "peri_pll_c1", NULL, 1, 0, 0, 1, 0, 0},
 	{ AGILEX_MPU_FREE_CLK, "mpu_free_clk", NULL, mpu_free_mux, ARRAY_SIZE(mpu_free_mux),
 	   0, 0x3C, 0, 0, 0},
 	{ AGILEX_NOC_FREE_CLK, "noc_free_clk", NULL, noc_free_mux, ARRAY_SIZE(noc_free_mux),
