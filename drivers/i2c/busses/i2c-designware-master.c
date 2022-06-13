@@ -813,16 +813,27 @@ static void i2c_dw_unprepare_recovery(struct i2c_adapter *adap)
 	i2c_dw_init_master(dev);
 }
 
+static int i2c_socfpga_scl_recovery(struct i2c_adapter *adap)
+{
+	i2c_dw_prepare_recovery(adap);
+	i2c_dw_unprepare_recovery(adap);
+	return 0;
+}
+
 static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 {
 	struct i2c_bus_recovery_info *rinfo = &dev->rinfo;
 	struct i2c_adapter *adap = &dev->adapter;
 	struct gpio_desc *gpio;
 
+	if ((dev->flags & MODEL_MASK) == MODEL_SOCFPGA) {
+		rinfo->recover_bus = i2c_socfpga_scl_recovery;
+		adap->bus_recovery_info = rinfo;
+	}
+
 	gpio = devm_gpiod_get_optional(dev->dev, "scl", GPIOD_OUT_HIGH);
 	if (IS_ERR_OR_NULL(gpio))
 		return PTR_ERR_OR_ZERO(gpio);
-
 	rinfo->scl_gpiod = gpio;
 
 	gpio = devm_gpiod_get_optional(dev->dev, "sda", GPIOD_IN);
