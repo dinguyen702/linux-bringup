@@ -17,9 +17,14 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/of.h>
+#include <linux/mfd/altera-sysmgr.h>
+#include <linux/regmap.h>
 
 #include "dw_mmc.h"
 #include "dw_mmc-pltfm.h"
+
+#define SYSMGR_SDMMC_CTRL_SET_AS10(smplsel, drvsel) \
+	((((smplsel) & 0x7) << 4) | (((drvsel) & 0x7) << 0))
 
 int dw_mci_pltfm_register(struct platform_device *pdev,
 			  const struct dw_mci_drv_data *drv_data)
@@ -62,9 +67,70 @@ const struct dev_pm_ops dw_mci_pltfm_pmops = {
 };
 EXPORT_SYMBOL_GPL(dw_mci_pltfm_pmops);
 
+static int dw_mci_socfpga_priv_init(struct dw_mci *host)
+{
+	struct device_node *np = host->dev->of_node;
+	struct regmap *sys_mgr_base_addr;
+	u32 clk_phase[2], reg_offset;
+	int i, rc, hs_timing;
+
+	rc = of_property_read_u32_array(np, "clk-phase", clk_phase, 2);
+	if (!rc) {
+		sys_mgr_base_addr =
+			altr_sysmgr_regmap_lookup_by_phandle(np, "altr,sysmgr-syscon");
+		if (IS_ERR(sys_mgr_base_addr)) {
+			pr_err("%s: failed to find altr,sys-mgr regmap!\n", __func__);
+		return 1;
+		}
+	} else
+		return 1;
+
+	of_property_read_u32_index(np, "altr,sysmgr-syscon", 1, &reg_offset);
+
+	for (i = 0; i < ARRAY_SIZE(clk_phase); i++) {
+		switch (clk_phase[i]) {
+		case 0:
+			clk_phase[i] = 0;
+			break;
+		case 45:
+			clk_phase[i] = 1;
+			break;
+		case 90:
+			clk_phase[i] = 2;
+			break;
+		case 135:
+			clk_phase[i] = 3;
+			break;
+		case 180:
+			clk_phase[i] = 4;
+			break;
+		case 225:
+			clk_phase[i] = 5;
+			break;
+		case 270:
+			clk_phase[i] = 6;
+			break;
+		case 315:
+			clk_phase[i] = 7;
+			break;
+		default:
+			clk_phase[i] = 0;
+			break;
+		}
+	}
+	hs_timing = SYSMGR_SDMMC_CTRL_SET_AS10(clk_phase[0], clk_phase[1]);
+	regmap_write(sys_mgr_base_addr, reg_offset, hs_timing);
+
+	return 0;
+}
+
+static const struct dw_mci_drv_data socfpga_drv_data = {
+	.init		= dw_mci_socfpga_priv_init,
+};
+
 static const struct of_device_id dw_mci_pltfm_match[] = {
 	{ .compatible = "snps,dw-mshc", },
-	{ .compatible = "altr,socfpga-dw-mshc", },
+	{ .compatible = "altr,socfpga-dw-mshc", .data =&socfpga_drv_data, },
 	{ .compatible = "img,pistachio-dw-mshc", },
 	{},
 };

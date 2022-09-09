@@ -74,6 +74,7 @@
 	cap-sd-highspeed;
 	broken-cd;
 	bus-width = <4>;
+	clk-phase = <0 135>;
 };
 
 &osc1 {
