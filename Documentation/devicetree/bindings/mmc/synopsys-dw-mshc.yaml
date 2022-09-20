@@ -38,6 +38,18 @@ properties:
       - const: biu
       - const: ciu
 
+  altr,sysmgr-syscon:
+    $ref: /schemas/types.yaml#/definitions/phandle-array
+    items:
+      - items:
+          - description: phandle to the sysmgr node
+          - description: register offset that controls the SDMMC clock phase
+    description:
+      Contains the phandle to System Manager block that contains
+      the SDMMC clock-phase control register. The first value is the pointer
+      to the sysmgr and the 2nd value is the register offset for the SDMMC
+      clock phase register.
+
 required:
   - compatible
   - reg
