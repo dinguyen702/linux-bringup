@@ -57,6 +57,16 @@ required:
   - clocks
   - clock-names
 
+if:
+  properties:
+    compatible:
+      contains:
+        enum:
+          - altr,socfpga-dw-mshc
+then:
+  required:
+    - altr,sysmgr-syscon
+
 unevaluatedProperties: false
 
 examples:
