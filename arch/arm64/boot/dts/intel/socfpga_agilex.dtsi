@@ -666,6 +666,10 @@
 				fpga_mgr: fpga-mgr {
 					compatible = "intel,agilex-soc-fpga-mgr";
 				};
+
+				hwmon: temp-volt {
+					compatible = "intel,socfpga-agilex-hwmon", "intel,socfpga-hwmon";
+				};
 			};
 		};
 	};

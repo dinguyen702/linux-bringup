@@ -633,6 +633,10 @@
 				fpga_mgr: fpga-mgr {
 					compatible = "intel,stratix10-soc-fpga-mgr";
 				};
+
+				hwmon: temp-volt {
+					compatible = "intel,socfpga-stratix10-hwmon", "intel,socfpga-hwmon";
+				};
 			};
 		};
 	};
