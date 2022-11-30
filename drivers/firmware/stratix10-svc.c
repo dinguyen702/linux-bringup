@@ -414,10 +414,12 @@ static void svc_thread_recv_status_ok(struct stratix10_svc_data *p_data,
 	case COMMAND_FIRMWARE_VERSION:
 	case COMMAND_HWMON_READTEMP:
 	case COMMAND_HWMON_READVOLT:
+	case COMMAND_READ_SECURE_REG:
 		cb_data->status = BIT(SVC_STATUS_OK);
 		cb_data->kaddr1 = &res.a1;
 		break;
 	case COMMAND_SMC_SVC_VERSION:
+	case COMMAND_WRITE_TO_SECURE_REG:
 		cb_data->status = BIT(SVC_STATUS_OK);
 		cb_data->kaddr1 = &res.a1;
 		cb_data->kaddr2 = &res.a2;
@@ -977,6 +979,15 @@ static int svc_normal_to_secure_thread(void *data)
 			a4 = pdata->arg[1];
 			a5 = (unsigned long)pdata->paddr_output;
 			a6 = (unsigned long)pdata->size_output / BYTE_TO_WORD_SIZE;
+			break;
+		case COMMAND_WRITE_TO_SECURE_REG:
+			a0 = INTEL_SIP_SMC_REG_WRITE;
+			a1 = pdata->arg[0];
+			a2 = pdata->arg[1];
+			break;
+		case COMMAND_READ_SECURE_REG:
+			a0 = INTEL_SIP_SMC_REG_READ;
+			a1 = pdata->arg[0];
 			break;
 		default:
 			pr_warn("it shouldn't happen\n");
