@@ -631,7 +631,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 					break;
 				}
 				timeout--;
-				mdelay(100);
+				mdelay(500);
 			}
 		} else {
 			data->com_paras.gp_data.addr = NULL;
