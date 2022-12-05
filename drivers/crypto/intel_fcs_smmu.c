@@ -2988,7 +2988,7 @@ static void write_secure_reg_callback(struct stratix10_svc_client *client,
 	complete(&priv->completion);
 }
 
-int smmu_program_reg(struct intel_fcs_priv *priv, uint32_t reg_add, uint32_t reg_value)
+static int smmu_program_reg(struct intel_fcs_priv *priv, uint32_t reg_add, uint32_t reg_value)
 {
 	struct stratix10_svc_chan *chan = priv->chan;
 	struct stratix10_svc_client_msg msg;
@@ -3065,12 +3065,6 @@ void intel_fcs_smmu_init(struct intel_fcs_priv *priv)
 	//TCR2
 	smmu_program_reg(priv, TCR2_REG_ADDR, TCR2_VAL);
 
-}
-
-void context_bank_enable(struct intel_fcs_priv *priv)
-{
-	//Disable translation context bank CB8_SCTLR
-	smmu_program_reg(priv, CB8_SCTRLR_REG_ADDR, TRANSLATION_CONTEXT_BANK_ENABLE);
 }
 
 void context_bank_disable(struct intel_fcs_priv *priv)

@@ -53,7 +53,6 @@ struct intel_fcs_priv {
 	struct hwrng rng;
 };
 
-int smmu_program_reg(struct intel_fcs_priv *priv, uint32_t reg_add, uint32_t reg_value);
 int smmu_read_reg(struct intel_fcs_priv *priv, uint32_t reg_add);
 void invalidate_smmu_tlb_entries(struct intel_fcs_priv *priv);
 void intel_fcs_smmu_init(struct intel_fcs_priv *priv);
