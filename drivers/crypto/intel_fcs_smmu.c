@@ -89,7 +89,6 @@
 * Shareability for non Memory does not apply. Those locations are automatically
 * marked outer shareable.
 */
-#define SMMU_LOWER_MEMORY_SHARED_INNER (SMMU_LOWER_MEMORY | SMMU_LOWER_SHARABILITY(SMMU_LOWER_SHARABILITY_E_INNER))
 #define SMMU_LOWER_MEMORY_SHARED_OUTER (SMMU_LOWER_MEMORY | SMMU_LOWER_SHARABILITY(SMMU_LOWER_SHARABILITY_E_OUTER))
 #define SMMU_LOWER_MEMORY_SHARED_OUTER_EL0_RW (SMMU_LOWER_MEMORY_EL0_RW | SMMU_LOWER_SHARABILITY(SMMU_LOWER_SHARABILITY_E_OUTER))
 #define SMMU_LOWER_MEMORY_SHARED_OUTER_EL1_EX (SMMU_LOWER_MEMORY_EL1_EX | SMMU_LOWER_SHARABILITY(SMMU_LOWER_SHARABILITY_E_OUTER))
@@ -97,7 +96,6 @@
 #define SMMU_LOWER_MEMORY_SHARED_OUTER_EL1_EL0_RO (SMMU_LOWER_MEMORY_EL1_EL0_RO | SMMU_LOWER_SHARABILITY(SMMU_LOWER_SHARABILITY_E_OUTER))
 #define SMMU_LOWER_MEMORY_SHARED_OUTER_NS (SMMU_LOWER_MEMORY_NONSECURE | SMMU_LOWER_SHARABILITY(SMMU_LOWER_SHARABILITY_E_OUTER))
 
-#define SMMU_L0_FAULT_ENTRY(...)	((unsigned long)(0))
 /*
  * Emit the possible address so if the fault is transformed into block,
  * it would have a default address. Also make the definition interchangeable with BLOCK.
@@ -107,26 +105,20 @@
  * Emit the possible address so if the fault is transformed into block,
  * it would have a default address. Also make the definition interchangeable with BLOCK.
  */
-#define SMMU_L2_FAULT_ENTRY(addr, ...)	((unsigned long)(((unsigned long)(addr) & 0xffffffe00000) | 0))
 /*
  * Emit the possible address so if the fault is transformed into block,
  * it would have a default address. Also make the definition interchangeable with BLOCK.
  */
-#define SMMU_L3_FAULT_ENTRY(addr, ...)	((unsigned long)(((unsigned long)(addr) & 0xfffffffff000) | 0))
 
 //mask off lower 12 bits and or it with table descriptor, OR in upper attributes
-#define SMMU_L0_TABLE_ENTRY(table, upper)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(table) & 0xfffffffff000) | 3))
 // For L1, next level table is [47-12] => [31-12]. See diagram D4-16.
 #define SMMU_L1_TABLE_ENTRY(table, upper)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(table) & 0xfffffffff000) | 3))
 // For L2, next level table is [47-12] => [31-12]. See diagram D4-16. Also, L2 table does not have upper attributes.
 #define SMMU_L2_TABLE_ENTRY(table, upper)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(table) & 0xfffffffff000) | 3))
 
 //mask off lower 16 bits and or it with table descriptor, OR in upper attributes
-#define SMMU_L0_TABLE_ENTRY_V64(table, upper)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(table) & 0xffffffff0000) | 3))
 // For L1, next level table is [47-12] => [31-12]. See diagram D4-16.
-#define SMMU_L1_TABLE_ENTRY_V64(table, upper)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(table) & 0xffffffff0000) | 3))
 // For L2, next level table is [47-12] => [31-12]. See diagram D4-16. Also, L2 table does not have upper attributes.
-#define SMMU_L2_TABLE_ENTRY_V64(table, upper)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(table) & 0xffffffff0000) | 3))
 
 // For L1, output address is [47-30] => [38-30]. See diagram D4-16.
 #define SMMU_L1_BLOCK_ENTRY(block, upper, lower)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(block) & 0xffffc0000000) | ((lower) & (0x3ff << 2)) | 1))
@@ -141,19 +133,6 @@
 #define SMMU_L3_BLOCK_ENTRY_V64(block, upper, lower)	((unsigned long)(((upper) & (0xffful << 52)) | ((unsigned long)(block) & 0xffffffff0000) | ((lower) & (0x3ff << 2)) | 1))
 
 //Ensure Lower Bites are Table, Block Descriptor, or Fault
-#define SMMU_L0_IS_FAULT(entry)   (((entry) & 0x1ul) == 0x0ul)
-#define SMMU_L0_IS_TABLE(entry)   (((entry) & 0x3ul) == 0x3ul)
-
-#define SMMU_L1_IS_FAULT(entry)   (((entry) & 0x1ul) == 0x0ul)
-#define SMMU_L1_IS_BLOCK(entry)   (((entry) & 0x3ul) == 0x1ul)
-#define SMMU_L1_IS_TABLE(entry)   (((entry) & 0x3ul) == 0x3ul)
-
-#define SMMU_L2_IS_FAULT(entry)   (((entry) & 0x1ul) == 0x0ul)
-#define SMMU_L2_IS_BLOCK(entry)   (((entry) & 0x3ul) == 0x1ul)
-#define SMMU_L2_IS_TABLE(entry)   (((entry) & 0x3ul) == 0x3ul)
-
-#define SMMU_L3_IS_FAULT(entry)   (((entry) & 0x1ul) == 0x0ul)
-#define SMMU_L3_IS_BLOCK(entry)   (((entry) & 0x3ul) == 0x1ul)
 
 #define TCR_RES1      ((1 << 31) | (0 << 23)) // Reserved, set as 1.
 #define TCR_PS_1TiB   (24 << 16)	// Physical Address Size of 1 TiB maximum.
