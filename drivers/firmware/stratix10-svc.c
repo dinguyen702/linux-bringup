@@ -764,24 +764,6 @@ static int svc_normal_to_secure_thread(void *data)
 			a5 = (unsigned long)pdata->paddr_output;
 			a6 = (unsigned long)pdata->size_output;
 			break;
-		case COMMAND_FCS_CRYPTO_AES_CRYPT_UPDATE_SMMU:
-			a0 = INTEL_SIP_SMC_FCS_AES_CRYPTO_UPDATE;
-			a1 = pdata->arg[0];
-			a2 = pdata->arg[1];
-			a3 = (unsigned long)pdata->paddr;
-			a4 = (unsigned long)pdata->size;
-			a5 = (unsigned long)pdata->paddr_output;
-			a6 = (unsigned long)pdata->size_output;
-			break;
-		case COMMAND_FCS_CRYPTO_AES_CRYPT_FINALIZE_SMMU:
-			a0 = INTEL_SIP_SMC_FCS_AES_CRYPTO_FINALIZE;
-			a1 = pdata->arg[0];
-			a2 = pdata->arg[1];
-			a3 = (unsigned long)pdata->paddr;
-			a4 = (unsigned long)pdata->size;
-			a5 = (unsigned long)pdata->paddr_output;
-			a6 = (unsigned long)pdata->size_output;
-			break;
 		case COMMAND_FCS_CRYPTO_GET_DIGEST_INIT:
 			a0 = INTEL_SIP_SMC_FCS_GET_DIGEST_INIT;
 			a1 = pdata->arg[0];
