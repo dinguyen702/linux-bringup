@@ -357,6 +357,19 @@
 			clock-names = "apb_pclk";
 		};
 
+		pinctrl: pinctrl@ffd13000 {
+			compatible = "pinctrl-single";
+			reg = <0xffd13000 0x120>;
+			pinctrl-single,register-width = <32>;
+			pinctrl-single,function-mask = <0x0000000f>;
+		};
+
+		pinconf: pinconf@ffd13130 {
+			compatible = "pinconf-single";
+			#pinctrl-cells = <1>;
+			reg = <0xffd13130 0x120>;
+			pinctrl-single,register-width = <32>;
+		};
 		rst: rstmgr@ffd11000 {
 			#reset-cells = <1>;
 			compatible = "altr,stratix10-rst-mgr";
