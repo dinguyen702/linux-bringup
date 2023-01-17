@@ -4,6 +4,7 @@
  */
 
 #include "socfpga_stratix10.dtsi"
+#include <dt-bindings/pinctrl/socfpga.h>
 
 / {
 	model = "SoCFPGA Stratix 10 SoCDK";
@@ -61,6 +62,29 @@
 				interrupts = <14 4>,
 					     <15 4>;
 			};
+		};
+
+		pmx0: pinmux@f7010000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <
+				&i2c0_pmx_func
+				&i2c1_pmx_func
+				>;
+
+			i2c0_pmx_func: i2c0_pmx_func {
+				pinctrl-single,pins = <
+					0x68   MUX_M4	/* I2C0_SDA (IO2-B) PIN26SEL*/
+					0x6c   MUX_M4	/* I2C0_SCL (IO3-B) PIN27SEL */
+				>;
+			};
+
+			i2c1_pmx_func: i2c1_pmx_func {
+				pinctrl-single,pins = <
+					0x78   MUX_M4	/* I2C1_SDA (IO6-B) PIN30SEL) */
+					0x7c   MUX_M4	/* I2C1_SCL (IO7-B) PIN31SEL */
+				>;
+			};
+
 		};
 	};
 };
