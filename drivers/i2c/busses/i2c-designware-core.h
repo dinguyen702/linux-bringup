@@ -293,6 +293,9 @@ struct dw_i2c_dev {
 	int			(*set_sda_hold_time)(struct dw_i2c_dev *dev);
 	int			mode;
 	struct i2c_bus_recovery_info rinfo;
+	struct pinctrl		*pinctrl;
+	struct pinctrl_state	*pinctrl_pins_default;
+	struct pinctrl_state	*pinctrl_pins_gpio;
 };
 
 #define ACCESS_INTR_MASK			BIT(0)
