@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * pinctrl dts file for SoCFPGA Stratix10/Agilex/N5X platform
+ *
+ */
+#include <dt-bindings/pinctrl/i.h>
+
+/ {
+	soc {
+		pmx0: pinmux@f7010000 {
+			pinctrl-names = "default";
+			pinctrl-0 = <
+				&i2c0_pmx_func
+				&i2c1_pmx_func
+				>;
+
+			i2c0_pmx_func: i2c0_pmx_func {
+				pinctrl-single,pins = <
+					0x68   MUX_M4	/* I2C0_SDA (IO2-B) PIN26SEL*/
+					0x6c   MUX_M4	/* I2C0_SCL (IO3-B) PIN27SEL */
+				>;
+			};
+
+			i2c1_pmx_func: i2c1_pmx_func {
+				pinctrl-single,pins = <
+					0x78   MUX_M4	/* I2C1_SDA (IO6-B) PIN30SEL) */
+					0x7c   MUX_M4	/* I2C1_SCL (IO7-B) PIN31SEL */
+				>;
+			};
+
+		};
+
+		pmx1: pinmux@f7010800 {
+
+			pinctrl-names = "default";
+			pinctrl-0 = <
+				&i2c0_cfg_func
+				&i2c1_cfg_func
+				>;
+
+			i2c0_cfg_func: i2c0_cfg_func {
+				pinctrl-single,pins = <
+					0xec   0x0	/* I2C0_SCL     (IOCFG059) */
+					0xf0   0x0	/* I2C0_SDA     (IOCFG060) */
+				>;
+				pinctrl-single,bias-pulldown  = <PULL_DIS  PULL_DOWN PULL_DIS  PULL_DOWN>;
+				pinctrl-single,bias-pullup    = <PULL_DIS  PULL_UP   PULL_DIS  PULL_UP>;
+				pinctrl-single,drive-strength = <DRIVE1_02MA DRIVE_MASK>;
+			};
+
+			i2c1_cfg_func: i2c1_cfg_func {
+				pinctrl-single,pins = <
+					0xf4   0x0	/* I2C1_SCL     (IOCFG061) */
+					0xf8   0x0	/* I2C1_SDA     (IOCFG062) */
+				>;
+				pinctrl-single,bias-pulldown  = <PULL_DIS  PULL_DOWN PULL_DIS  PULL_DOWN>;
+				pinctrl-single,bias-pullup    = <PULL_DIS  PULL_UP   PULL_DIS  PULL_UP>;
+				pinctrl-single,drive-strength = <DRIVE1_02MA DRIVE_MASK>;
+			};
+
+			i2c2_cfg_func: i2c2_cfg_func {
+				pinctrl-single,pins = <
+					0xfc   0x0	/* I2C2_SCL     (IOCFG063) */
+					0x100  0x0	/* I2C2_SDA     (IOCFG064) */
+				>;
+				pinctrl-single,bias-pulldown  = <PULL_DIS  PULL_DOWN PULL_DIS  PULL_DOWN>;
+				pinctrl-single,bias-pullup    = <PULL_DIS  PULL_UP   PULL_DIS  PULL_UP>;
+				pinctrl-single,drive-strength = <DRIVE1_02MA DRIVE_MASK>;
+			};
+		};
+
+	};
+};
