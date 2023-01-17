@@ -826,10 +826,12 @@ static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 	struct i2c_adapter *adap = &dev->adapter;
 	struct gpio_desc *gpio;
 
+	dev_info(dev->dev, "DINH %s\n", __func__);
 	dev->pinctrl = devm_pinctrl_get(dev->dev);
 	if (!dev->pinctrl || IS_ERR(dev->pinctrl)) {
-		dev_info(dev->dev, "DINH no pinctrl\n");
-	}	
+		dev_info(dev->dev, "DINH 2 no pinctrl\n");
+	} else
+		dev_info(dev->dev, "DINH 3 found pinctrl\n");
 
 	gpio = devm_gpiod_get_optional(dev->dev, "scl", GPIOD_OUT_HIGH);
 	if (IS_ERR_OR_NULL(gpio))
@@ -873,6 +875,7 @@ int i2c_dw_probe_master(struct dw_i2c_dev *dev)
 	unsigned long irq_flags;
 	int ret;
 
+	printk("DINH %s\n", __func__);
 	init_completion(&dev->cmd_complete);
 
 	dev->init = i2c_dw_init_master;

@@ -269,6 +269,7 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 	struct i2c_timings *t;
 	int irq, ret;
 
+	printk("DINH %s\n", __func__);
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
@@ -373,6 +374,7 @@ static int dw_i2c_plat_probe(struct platform_device *pdev)
 		pm_runtime_get_noresume(&pdev->dev);
 
 	pm_runtime_enable(&pdev->dev);
+	printk("DINH %s END\n", __func__);
 
 	ret = i2c_dw_probe(dev);
 	if (ret)
