@@ -827,8 +827,8 @@ static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 	struct gpio_desc *gpio;
 
 	dev_info(dev->dev, "DINH %s\n", __func__);
-	dev->pinctrl = devm_pinctrl_get(dev->dev);
-	if (!dev->pinctrl || IS_ERR(dev->pinctrl)) {
+	rinfo->pinctrl = devm_pinctrl_get(dev->dev);
+	if (IS_ERR(rinfo->pinctrl)) {
 		dev_info(dev->dev, "DINH 2 no pinctrl\n");
 	} else
 		dev_info(dev->dev, "DINH 3 found pinctrl\n");
