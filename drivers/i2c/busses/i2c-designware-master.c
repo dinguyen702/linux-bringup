@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/reset.h>
@@ -805,6 +806,11 @@ static void i2c_dw_prepare_recovery(struct i2c_adapter *adap)
 {
 	struct dw_i2c_dev *dev = i2c_get_adapdata(adap);
 
+	/* use pinctrl to put the i2c pins into GPIO mode */
+	if (dev->pinctrl_pins_gpio)
+		pinctrl_select_state(adap->bus_recovery_info->pinctrl,
+				     dev->pinctrl_pins_gpio);
+
 	i2c_dw_disable(dev);
 	reset_control_assert(dev->rst);
 	i2c_dw_prepare_clk(dev, false);
@@ -814,6 +820,10 @@ static void i2c_dw_unprepare_recovery(struct i2c_adapter *adap)
 {
 	struct dw_i2c_dev *dev = i2c_get_adapdata(adap);
 
+	/* use pinctrl to put the pins back to I2C */
+	if (dev->pinctrl_pins_default)
+		pinctrl_select_state(adap->bus_recovery_info->pinctrl,
+				     dev->pinctrl_pins_default);
 	i2c_dw_prepare_clk(dev, true);
 	reset_control_deassert(dev->rst);
 	i2c_dw_init_master(dev);
@@ -824,6 +834,15 @@ static int i2c_dw_init_recovery_info(struct dw_i2c_dev *dev)
 	struct i2c_bus_recovery_info *rinfo = &dev->rinfo;
 	struct i2c_adapter *adap = &dev->adapter;
 	struct gpio_desc *gpio;
+
+	rinfo->pinctrl = devm_pinctrl_get(dev->dev);
+	if (rinfo->pinctrl) {
+		/* found a pinctrl driver, get the GPIO and i2c pins */
+		dev->pinctrl_pins_default = pinctrl_lookup_state(rinfo->pinctrl,
+						PINCTRL_STATE_DEFAULT);
+		dev->pinctrl_pins_gpio = pinctrl_lookup_state(rinfo->pinctrl,
+						"gpio");
+	}
 
 	gpio = devm_gpiod_get_optional(dev->dev, "scl", GPIOD_OUT_HIGH);
 	if (IS_ERR_OR_NULL(gpio))
