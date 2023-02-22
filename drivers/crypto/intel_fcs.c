@@ -10,7 +10,6 @@
 #include <linux/firmware.h>
 #include <linux/fs.h>
 #include <linux/hw_random.h>
-#include <linux/kobject.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -2887,21 +2886,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 	return ret;
 }
 
-static int fcs_open(struct inode *inode, struct file *file)
-{
-	pr_debug("%s\n", __func__);
-
-	return 0;
-}
-
-static int fcs_close(struct inode *inode, struct file *file)
-{
-
-	pr_debug("%s\n", __func__);
-
-	return 0;
-}
-
 static int fcs_rng_read(struct hwrng *rng, void *buf, size_t max, bool wait)
 {
 	struct stratix10_svc_client_msg *msg;
@@ -2958,8 +2942,6 @@ static int fcs_rng_read(struct hwrng *rng, void *buf, size_t max, bool wait)
 static const struct file_operations fcs_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = fcs_ioctl,
-	.open = fcs_open,
-	.release = fcs_close,
 };
 
 static int fcs_driver_probe(struct platform_device *pdev)
