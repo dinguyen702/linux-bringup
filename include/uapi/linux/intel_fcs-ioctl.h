@@ -394,8 +394,6 @@ struct intel_fcs_dev_ioctl {
  *
  * @INTEL_FCS_DEV_VERSION_CMD:
  *
- * @INTEL_FCS_DEV_MBOX_SEND_CMD:
- *
  * @INTEL_FCS_DEV_CERTIFICATE_CMD:
  *
  * @INTEL_FCS_DEV_VALIDATE_REQUEST_CMD:
@@ -413,7 +411,6 @@ struct intel_fcs_dev_ioctl {
 enum intel_fcs_command_code {
 	INTEL_FCS_DEV_COMMAND_NONE = 0,
 	INTEL_FCS_DEV_VERSION_CMD = 1,
-	INTEL_FCS_DEV_MBOX_SEND_CMD,
 	INTEL_FCS_DEV_CERTIFICATE_CMD = 0xB,
 	INTEL_FCS_DEV_VALIDATE_REQUEST_CMD = 0x78,
 	INTEL_FCS_DEV_COUNTER_SET_CMD,
@@ -443,10 +440,6 @@ enum intel_fcs_command_code {
 #define INTEL_FCS_DEV_VERSION_REQUEST \
 	_IOWR(INTEL_FCS_IOCTL, \
 	      INTEL_FCS_DEV_VERSION_CMD, struct intel_fcs_dev_ioctl)
-
-#define INTEL_FCS_DEV_MBOX_SEND \
-	_IOWR(INTEL_FCS_IOCTL, \
-	      INTEL_FCS_DEV_MBOX_SEND_CMD, struct intel_fcs_dev_ioctl)
 
 #define INTEL_FCS_DEV_VALIDATION_REQUEST \
 	_IOWR(INTEL_FCS_IOCTL, \
