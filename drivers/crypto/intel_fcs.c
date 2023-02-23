@@ -853,91 +853,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		fcs_close_services(priv, NULL, NULL);
 		break;
 
-	case INTEL_FCS_DEV_ATTESTATION_GET_CERTIFICATE:
-		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
-			dev_err(dev, "failure on copy_from_user\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.certificate.rsp_data_sz > CERTIFICATE_RSP_MAX_SZ) {
-			dev_err(dev, "Invalid certificate RSP size %d\n",
-				data->com_paras.certificate.rsp_data_sz);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		d_buf = stratix10_svc_allocate_memory(priv->chan,
-						      CERTIFICATE_RSP_MAX_SZ);
-		if (!d_buf) {
-			dev_err(dev, "failed allocate certificate RSP buf\n");
-			mutex_unlock(&priv->lock);
-			return -ENOMEM;
-		}
-
-		msg->command = COMMAND_FCS_ATTESTATION_CERTIFICATE;
-		msg->payload = NULL;
-		msg->payload_length = 0;
-		msg->payload_output = d_buf;
-		msg->payload_length_output = CERTIFICATE_RSP_MAX_SZ;
-		msg->arg[0] = data->com_paras.certificate.c_request & 0x00ff;
-		priv->client.receive_cb = fcs_attestation_callback;
-
-		ret = fcs_request_service(priv, (void *)msg,
-					  10 * FCS_REQUEST_TIMEOUT);
-		if (!ret && !priv->status) {
-			if (priv->size > CERTIFICATE_RSP_MAX_SZ) {
-				dev_err(dev,
-					"returned size is incorrect\n");
-				fcs_close_services(priv, NULL, d_buf);
-				return -EFAULT;
-			}
-
-			memcpy(data->com_paras.certificate.rsp_data,
-			       priv->kbuf, priv->size);
-			data->com_paras.certificate.rsp_data_sz = priv->size;
-			data->status = priv->status;
-		} else {
-			data->com_paras.certificate.rsp_data = NULL;
-			data->com_paras.certificate.rsp_data_sz = 0;
-			data->status = priv->status;
-		}
-
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			fcs_close_services(priv, NULL, d_buf);
-			ret = -EFAULT;
-		}
-
-		fcs_close_services(priv, NULL, d_buf);
-		break;
-
-	case INTEL_FCS_DEV_ATTESTATION_CERTIFICATE_RELOAD:
-		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
-			dev_err(dev, "failure on copy_from_user\n");
-			return -EFAULT;
-		}
-
-		msg->command = COMMAND_FCS_ATTESTATION_CERTIFICATE_RELOAD;
-		msg->arg[0] = data->com_paras.c_reload.c_request & 0x00ff;
-		priv->client.receive_cb = fcs_vab_callback;
-		ret = fcs_request_service(priv, (void *)msg,
-					  10 * FCS_REQUEST_TIMEOUT);
-		if (ret) {
-			dev_err(dev, "failed to send the request,ret=%d\n",
-				ret);
-			fcs_close_services(priv, NULL, NULL);
-			return -EFAULT;
-		}
-
-		data->status = priv->status;
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			ret = -EFAULT;
-		}
-		fcs_close_services(priv, NULL, NULL);
-		break;
-
 	case INTEL_FCS_DEV_GET_ROM_PATCH_SHA384:
 		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
 			dev_err(dev, "failure on copy_from_user\n");
@@ -1161,7 +1076,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		 msg->payload_length_output = CRYPTO_EXPORTED_KEY_OBJECT_MAX_SZ;
 		 msg->arg[0] = data->com_paras.k_object.sid;
 		 msg->arg[1] = data->com_paras.k_object.kid;
-		 priv->client.receive_cb = fcs_attestation_callback;
 
 		 ret = fcs_request_service(priv, (void *)msg,
 					   FCS_REQUEST_TIMEOUT);

@@ -160,26 +160,6 @@ struct fcs_random_number_gen {
 };
 
 /**
- * struct fcs_attestation_certificate
- * @c_request: certificate request
- * @rsp_data: response data of the request certificate
- * @rsp_data_sz: size of response data of the request certificate
- */
-struct fcs_attestation_certificate {
-	int c_request;
-	char *rsp_data;
-	uint32_t rsp_data_sz;
-};
-
-/**
- * fcs_attestation_certificate_reload
- * @c_request: certificate request
- */
-struct fcs_attestation_certificate_reload {
-	int c_request;
-};
-
-/**
  * struct fcs_rom_patch_sha384
  * @checksum: 12 words of checksum calculated from rom patch area
  */
@@ -385,27 +365,25 @@ struct intel_fcs_dev_ioctl {
 
 	/* command parameters */
 	union {
-		struct fcs_mbox_send_cmd	mbox_send_cmd;
-		struct fcs_placeholder		placeholder;
-		struct fcs_validation_request	s_request;
-		struct fcs_certificate_request	c_request;
+		struct fcs_mbox_send_cmd		mbox_send_cmd;
+		struct fcs_placeholder			placeholder;
+		struct fcs_validation_request		s_request;
+		struct fcs_certificate_request		c_request;
 		struct fcs_single_certificate_request	i_request;
-		struct fcs_key_manage_request	gp_data;
-		struct fcs_data_encryption	d_encryption;
-		struct fcs_data_decryption	d_decryption;
-		struct fcs_random_number_gen	rn_gen;
-		struct fcs_attestation_certificate	certificate;
-		struct fcs_attestation_certificate_reload	c_reload;
-		struct fcs_rom_patch_sha384 sha384;
+		struct fcs_key_manage_request		gp_data;
+		struct fcs_data_encryption		d_encryption;
+		struct fcs_data_decryption		d_decryption;
+		struct fcs_random_number_gen		rn_gen;
+		struct fcs_rom_patch_sha384		sha384;
 		struct fcs_crypto_service_session	s_session;
 		struct fcs_crypto_key_import		k_import;
 		struct fcs_crypto_key_object		k_object;
-		struct fcs_aes_crypt		a_crypt;
-		struct fcs_sha2_mac_data	s_mac_data;
-		struct fcs_ecdsa_data		ecdsa_data;
-		struct fcs_ecdsa_sha2_data	ecdsa_sha2_data;
+		struct fcs_aes_crypt			a_crypt;
+		struct fcs_sha2_mac_data		s_mac_data;
+		struct fcs_ecdsa_data			ecdsa_data;
+		struct fcs_ecdsa_sha2_data		ecdsa_sha2_data;
 		struct fcs_random_number_gen_ext	rn_gen_ext;
-		struct fcs_sdos_data_ext	data_sdos_ext;
+		struct fcs_sdos_data_ext		data_sdos_ext;
 	} com_paras;
 };
 
@@ -448,8 +426,6 @@ enum intel_fcs_command_code {
 	INTEL_FCS_DEV_DATA_ENCRYPTION_CMD = 0x7E,
 	INTEL_FCS_DEV_DATA_DECRYPTION_CMD,
 	INTEL_FCS_DEV_RANDOM_NUMBER_GEN_CMD,
-	INTEL_FCS_DEV_ATTESTATION_GET_CERTIFICATE_CMD,
-	INTEL_FCS_DEV_ATTESTATION_CERTIFICATE_RELOAD_CMD,
 	INTEL_FCS_DEV_GET_ROM_PATCH_SHA384_CMD,
 	INTEL_FCS_DEV_CRYPTO_OPEN_SESSION_CMD = 0xA0,
 	INTEL_FCS_DEV_CRYPTO_CLOSE_SESSION_CMD,
@@ -505,14 +481,6 @@ enum intel_fcs_command_code {
 #define INTEL_FCS_DEV_RANDOM_NUMBER_GEN \
 	_IOWR(INTEL_FCS_IOCTL, \
 	      INTEL_FCS_DEV_RANDOM_NUMBER_GEN_CMD, struct intel_fcs_dev_ioctl)
-
-#define INTEL_FCS_DEV_ATTESTATION_GET_CERTIFICATE \
-	_IOWR(INTEL_FCS_IOCTL, \
-	      INTEL_FCS_DEV_ATTESTATION_GET_CERTIFICATE_CMD, struct intel_fcs_dev_ioctl)
-
-#define INTEL_FCS_DEV_ATTESTATION_CERTIFICATE_RELOAD \
-	_IOWR(INTEL_FCS_IOCTL, \
-	      INTEL_FCS_DEV_ATTESTATION_CERTIFICATE_RELOAD_CMD, struct intel_fcs_dev_ioctl)
 
 #define INTEL_FCS_DEV_GET_ROM_PATCH_SHA384 \
 	_IOWR(INTEL_FCS_IOCTL, \
