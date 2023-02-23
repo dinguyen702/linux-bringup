@@ -439,36 +439,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		fcs_close_services(priv, s_buf, ps_buf);
 		break;
 
-	case INTEL_FCS_DEV_COUNTER_SET_PREAUTHORIZED:
-		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
-			dev_err(dev, "failure on copy_from_user\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		msg->command = COMMAND_FCS_COUNTER_SET_PREAUTHORIZED;
-		msg->arg[0] = data->com_paras.i_request.counter_type;
-		msg->arg[1] = data->com_paras.i_request.counter_value;
-		msg->arg[2] = data->com_paras.i_request.test.test_word;
-		priv->client.receive_cb = fcs_vab_callback;
-
-		ret = fcs_request_service(priv, (void *)msg,
-					  FCS_REQUEST_TIMEOUT);
-		if (ret) {
-			dev_err(dev, "failed to send the request,ret=%d\n",
-				ret);
-			fcs_close_services(priv, NULL, NULL);
-			return -EFAULT;
-		}
-
-		data->status = priv->status;
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			ret = -EFAULT;
-		}
-		fcs_close_services(priv, NULL, NULL);
-		break;
-
 	case INTEL_FCS_DEV_RANDOM_NUMBER_GEN:
 		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
 			dev_err(dev, "failure on copy_from_user\n");
@@ -2562,7 +2532,6 @@ static int fcs_driver_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->client.dev = dev;
-	priv->client.receive_cb = NULL;
 	priv->client.priv = priv;
 	priv->status = INVALID_STATUS;
 	priv->sid = INVALID_ID;
