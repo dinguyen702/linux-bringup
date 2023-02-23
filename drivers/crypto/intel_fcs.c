@@ -176,32 +176,6 @@ static void fcs_hwrng_callback(struct stratix10_svc_client *client,
 	complete(&priv->completion);
 }
 
-static void fcs_mbox_send_cmd_callback(struct stratix10_svc_client *client,
-				     struct stratix10_svc_cb_data *data)
-{
-	struct intel_fcs_priv *priv = client->priv;
-
-	switch (data->status) {
-	case BIT(SVC_STATUS_OK):
-		priv->status =  0;
-		priv->size = *((unsigned int *)data->kaddr2);
-		break;
-	case BIT(SVC_STATUS_ERROR):
-		priv->status = *((unsigned int *)data->kaddr1);
-		dev_err(client->dev, "mbox_error=0x%x\n", priv->status);
-		break;
-	case BIT(SVC_STATUS_INVALID_PARAM):
-		priv->status = -EINVAL;
-		dev_err(client->dev, "request rejected\n");
-		break;
-	default:
-		priv->status = -EINVAL;
-		dev_err(client->dev, "rejected, invalid param\n");
-	}
-
-	complete(&priv->completion);
-}
-
 static int fcs_request_service(struct intel_fcs_priv *priv,
 			       void *msg, unsigned long timeout)
 {
