@@ -39,12 +39,6 @@
 #define ENC_MIN_SZ		120
 #define ENC_MAX_SZ		32760
 
-#define SUBKEY_CMD_MAX_SZ	4092
-#define SUBKEY_RSP_MAX_SZ	820
-#define MEASUREMENT_CMD_MAX_SZ	4092
-#define MEASUREMENT_RSP_MAX_SZ	4092
-#define CERTIFICATE_RSP_MAX_SZ	4096
-
 #define CRYPTO_EXPORTED_KEY_OBJECT_MAX_SZ 364
 #define CRYPTO_GET_KEY_INFO_MAX_SZ 144
 
@@ -79,8 +73,6 @@ struct intel_fcs_priv {
 	unsigned int status;
 	void *kbuf;
 	unsigned int size;
-	unsigned int cid_low;
-	unsigned int cid_high;
 	unsigned int sid;
 	struct hwrng rng;
 };
@@ -138,42 +130,6 @@ static void fcs_vab_callback(struct stratix10_svc_client *client,
 	} else {
 		priv->status = -EINVAL;
 		dev_err(client->dev, "rejected, invalid param\n");
-	}
-
-	complete(&priv->completion);
-}
-
-static void fcs_chipid_callback(struct stratix10_svc_client *client,
-				struct stratix10_svc_cb_data *data)
-{
-	struct intel_fcs_priv *priv = client->priv;
-
-	priv->status = data->status;
-	if (data->status == BIT(SVC_STATUS_OK)) {
-		priv->status = 0;
-		priv->cid_low = *((unsigned int *)data->kaddr2);
-		priv->cid_high = *((unsigned int *)data->kaddr3);
-	} else if (data->status == BIT(SVC_STATUS_ERROR)) {
-		priv->status = *((unsigned int *)data->kaddr1);
-		dev_err(client->dev, "mbox_error=0x%x\n", priv->status);
-	}
-
-	complete(&priv->completion);
-}
-
-static void fcs_attestation_callback(struct stratix10_svc_client *client,
-				     struct stratix10_svc_cb_data *data)
-{
-	struct intel_fcs_priv *priv = client->priv;
-
-	priv->status = data->status;
-	if (data->status == BIT(SVC_STATUS_OK)) {
-		priv->status = 0;
-		priv->kbuf = data->kaddr2;
-		priv->size = *((unsigned int *)data->kaddr3);
-	} else if (data->status == BIT(SVC_STATUS_ERROR)) {
-		priv->status = *((unsigned int *)data->kaddr1);
-		dev_err(client->dev, "mbox_error=0x%x\n", priv->status);
 	}
 
 	complete(&priv->completion);
@@ -291,7 +247,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 	struct stratix10_svc_client_msg *msg;
 	const struct firmware *fw;
 	char filename[FILE_NAME_SIZE];
-	size_t tsz, rsz, datasz, ud_sz;
+	size_t tsz, datasz, ud_sz;
 	uint32_t sid;
 	uint32_t kuid;
 	uint32_t cid;
@@ -895,261 +851,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		fcs_free_memory(priv, ps_buf, s_buf, d_buf);
 		fcs_close_services(priv, NULL, NULL);
-		break;
-
-	case INTEL_FCS_DEV_PSGSIGMA_TEARDOWN:
-		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
-			dev_err(dev, "failure on copy_from_user\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		sid = data->com_paras.tdown.sid;
-		if ((sid != SIGMA_SESSION_ID_ONE) &&
-			(sid != SIGMA_UNKNOWN_SESSION)) {
-			dev_err(dev, "Invalid session ID:%d\n", sid);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		msg->command = COMMAND_FCS_PSGSIGMA_TEARDOWN;
-		msg->arg[0] = sid;
-		priv->client.receive_cb = fcs_vab_callback;
-		ret = fcs_request_service(priv, (void *)msg,
-					  FCS_REQUEST_TIMEOUT);
-		if (ret) {
-			dev_err(dev, "failed to send the request,ret=%d\n",
-				ret);
-			fcs_close_services(priv, NULL, NULL);
-			return -EFAULT;
-		}
-
-		data->status = priv->status;
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			ret = -EFAULT;
-		}
-		fcs_close_services(priv, NULL, NULL);
-		break;
-
-	case INTEL_FCS_DEV_CHIP_ID:
-		msg->command = COMMAND_FCS_GET_CHIP_ID;
-		priv->client.receive_cb = fcs_chipid_callback;
-		ret = fcs_request_service(priv, (void *)msg,
-					  FCS_REQUEST_TIMEOUT);
-		if (ret) {
-			dev_err(dev, "failed to send the request,ret=%d\n",
-				ret);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		data->status = priv->status;
-		data->com_paras.c_id.chip_id_low = priv->cid_low;
-		data->com_paras.c_id.chip_id_high = priv->cid_high;
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			ret = -EFAULT;
-		}
-		fcs_close_services(priv, NULL, NULL);
-		break;
-
-	case INTEL_FCS_DEV_ATTESTATION_SUBKEY:
-		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
-			dev_err(dev, "failure on copy_from_user\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.subkey.cmd_data_sz > SUBKEY_CMD_MAX_SZ) {
-			dev_err(dev, "Invalid subkey CMD size %d\n",
-				data->com_paras.subkey.cmd_data_sz);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.subkey.rsp_data_sz > SUBKEY_RSP_MAX_SZ) {
-			dev_err(dev, "Invalid subkey RSP size %d\n",
-				data->com_paras.subkey.rsp_data_sz);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.subkey.cmd_data == NULL ||
-		    data->com_paras.subkey.rsp_data == NULL) {
-			dev_err(dev, "Invalid subkey data pointer\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		/* allocate buffer for both soruce and destination */
-		rsz = sizeof(struct intel_fcs_attestation_resv_word);
-		datasz = data->com_paras.subkey.cmd_data_sz + rsz;
-
-		s_buf = stratix10_svc_allocate_memory(priv->chan,
-						      SUBKEY_CMD_MAX_SZ +
-						      rsz);
-		if (!s_buf) {
-			dev_err(dev, "failed allocate subkey CMD buf\n");
-			mutex_unlock(&priv->lock);
-			return -ENOMEM;
-		}
-
-		d_buf = stratix10_svc_allocate_memory(priv->chan,
-						      SUBKEY_RSP_MAX_SZ);
-		if (!d_buf) {
-			dev_err(dev, "failed allocate subkey RSP buf\n");
-			mutex_unlock(&priv->lock);
-			return -ENOMEM;
-		}
-
-		/* copy the reserve word first then command payload */
-		memcpy(s_buf, &data->com_paras.subkey.resv.resv_word, rsz);
-
-		/* Copy user data from user space to kernel space */
-		ret = copy_from_user(s_buf + rsz,
-				     data->com_paras.subkey.cmd_data,
-				     data->com_paras.subkey.cmd_data_sz);
-		if (ret) {
-			dev_err(dev, "failure on copy_from_user\n");
-			fcs_free_memory(priv, s_buf, d_buf, NULL);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		msg->command = COMMAND_FCS_ATTESTATION_SUBKEY;
-		msg->payload = s_buf;
-		msg->payload_length = datasz;
-		msg->payload_output = d_buf;
-		msg->payload_length_output = SUBKEY_RSP_MAX_SZ;
-		priv->client.receive_cb = fcs_attestation_callback;
-
-		ret = fcs_request_service(priv, (void *)msg,
-					  10 * FCS_REQUEST_TIMEOUT);
-		if (!ret && !priv->status) {
-			if (priv->size > SUBKEY_RSP_MAX_SZ) {
-				dev_err(dev,
-					"returned size is incorrect\n");
-				fcs_close_services(priv, s_buf, d_buf);
-				return -EFAULT;
-			}
-
-			memcpy(data->com_paras.subkey.rsp_data,
-			       priv->kbuf, priv->size);
-			data->com_paras.subkey.rsp_data_sz = priv->size;
-			data->status = priv->status;
-
-		} else {
-			data->com_paras.subkey.rsp_data = NULL;
-			data->com_paras.subkey.rsp_data_sz = 0;
-			data->status = priv->status;
-		}
-
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		fcs_close_services(priv, s_buf, d_buf);
-		break;
-
-	case INTEL_FCS_DEV_ATTESTATION_MEASUREMENT:
-		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
-			dev_err(dev, "failure on copy_from_user\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.measurement.cmd_data_sz > MEASUREMENT_CMD_MAX_SZ) {
-			dev_err(dev, "Invalid measurement CMD size %d\n",
-				data->com_paras.measurement.cmd_data_sz);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.measurement.rsp_data_sz > MEASUREMENT_RSP_MAX_SZ) {
-			dev_err(dev, "Invalid measurement RSP size %d\n",
-				data->com_paras.measurement.rsp_data_sz);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		if (data->com_paras.measurement.cmd_data == NULL ||
-		    data->com_paras.measurement.rsp_data == NULL) {
-			dev_err(dev, "Invalid measurement data pointer\n");
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		/* allocate buffer for both soruce and destination */
-		rsz = sizeof(struct intel_fcs_attestation_resv_word);
-		datasz = data->com_paras.measurement.cmd_data_sz + rsz;
-
-		s_buf = stratix10_svc_allocate_memory(priv->chan,
-						      MEASUREMENT_CMD_MAX_SZ +
-						      rsz);
-		if (!s_buf) {
-			dev_err(dev, "failed allocate measurement CMD buf\n");
-			mutex_unlock(&priv->lock);
-			return -ENOMEM;
-		}
-
-		d_buf = stratix10_svc_allocate_memory(priv->chan,
-						      MEASUREMENT_RSP_MAX_SZ);
-		if (!d_buf) {
-			dev_err(dev, "failed allocate measurement RSP buf\n");
-			mutex_unlock(&priv->lock);
-			return -ENOMEM;
-		}
-
-		/* copy the reserve word first then command payload */
-		memcpy(s_buf, &data->com_paras.measurement.resv.resv_word, rsz);
-
-		/* Copy user data from user space to kernel space */
-		ret = copy_from_user(s_buf + rsz,
-				     data->com_paras.measurement.cmd_data,
-				     data->com_paras.measurement.cmd_data_sz);
-		if (ret) {
-			dev_err(dev, "failure on copy_from_user\n");
-			fcs_free_memory(priv, s_buf, d_buf, NULL);
-			mutex_unlock(&priv->lock);
-			return -EFAULT;
-		}
-
-		msg->command = COMMAND_FCS_ATTESTATION_MEASUREMENTS;
-		msg->payload = s_buf;
-		msg->payload_length = datasz;
-		msg->payload_output = d_buf;
-		msg->payload_length_output = MEASUREMENT_RSP_MAX_SZ;
-		priv->client.receive_cb = fcs_attestation_callback;
-
-		ret = fcs_request_service(priv, (void *)msg,
-					  10 * FCS_REQUEST_TIMEOUT);
-		if (!ret && !priv->status) {
-			if (priv->size > MEASUREMENT_RSP_MAX_SZ) {
-				dev_err(dev,
-					"returned size is incorrect\n");
-				fcs_close_services(priv, s_buf, d_buf);
-				return -EFAULT;
-			}
-
-			memcpy(data->com_paras.measurement.rsp_data,
-			       priv->kbuf, priv->size);
-			data->com_paras.measurement.rsp_data_sz = priv->size;
-			data->status = priv->status;
-		} else {
-			data->com_paras.measurement.rsp_data = NULL;
-			data->com_paras.measurement.rsp_data_sz = 0;
-			data->status = priv->status;
-		}
-
-		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
-			dev_err(dev, "failure on copy_to_user\n");
-			ret = -EFAULT;
-		}
-
-		fcs_close_services(priv, s_buf, d_buf);
 		break;
 
 	case INTEL_FCS_DEV_ATTESTATION_GET_CERTIFICATE:
@@ -2957,11 +2658,7 @@ static int fcs_driver_probe(struct platform_device *pdev)
 	priv->client.dev = dev;
 	priv->client.receive_cb = NULL;
 	priv->client.priv = priv;
-	priv->kbuf = NULL;
-	priv->size = 0;
 	priv->status = INVALID_STATUS;
-	priv->cid_low = INVALID_ID;
-	priv->cid_high = INVALID_ID;
 	priv->sid = INVALID_ID;
 
 	mutex_init(&priv->lock);
