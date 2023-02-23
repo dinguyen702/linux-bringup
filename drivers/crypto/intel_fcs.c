@@ -8,6 +8,7 @@
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
+#include <linux/firmware/intel/stratix10-svc-client.h>
 #include <linux/fs.h>
 #include <linux/hw_random.h>
 #include <linux/miscdevice.h>
@@ -16,28 +17,27 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
-#include <linux/firmware/intel/stratix10-svc-client.h>
-#include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <linux/sysfs.h>
 #include <linux/uaccess.h>
 
 #include <uapi/linux/intel_fcs-ioctl.h>
 
-#define RANDOM_NUMBER_SIZE	32
-#define RANDOM_NUMBER_EXT_SIZE	4080
-#define RANDOM_NUMBER_EXT_OFFSET 12
-#define FILE_NAME_SIZE		32
-#define PS_BUF_SIZE		64
-#define SHA384_SIZE		48
-#define INVALID_STATUS		0xFFFFFFFF
-#define INVALID_ID		0xFFFFFFFF
-#define ASYNC_POLL_SERVICE	0x00004F4E
+#define RANDOM_NUMBER_SIZE		32
+#define RANDOM_NUMBER_EXT_SIZE		4080
+#define RANDOM_NUMBER_EXT_OFFSET 	12
+#define FILE_NAME_SIZE			32
+#define PS_BUF_SIZE			64
+#define SHA384_SIZE			48
+#define INVALID_STATUS			0xFFFFFFFF
+#define INVALID_ID			0xFFFFFFFF
+#define ASYNC_POLL_SERVICE		0x00004F4E
 
-#define DEC_MIN_SZ		72
-#define DEC_MAX_SZ		32712
-#define ENC_MIN_SZ		120
-#define ENC_MAX_SZ		32760
+#define DEC_MIN_SZ			72
+#define DEC_MAX_SZ			32712
+#define ENC_MIN_SZ			120
+#define ENC_MAX_SZ			32760
 
 #define CRYPTO_EXPORTED_KEY_OBJECT_MAX_SZ 364
 #define CRYPTO_GET_KEY_INFO_MAX_SZ 144
@@ -45,20 +45,17 @@
 #define CRYPTO_ECC_PARAM_SZ	4
 #define CRYPTO_ECC_DIGEST_SZ_OFFSET 4
 
-#define AES_CRYPT_CMD_MAX_SZ	SZ_4M /* set 4 Mb for now */
+#define AES_CRYPT_CMD_MAX_SZ	SZ_4M
 #define AES_CRYPT_MODE_ECB	0
 #define AES_CRYPT_MODE_CBC	1
 #define AES_CRYPT_MODE_CTR	2
 #define AES_CRYPT_PARAM_SIZE_ECB	12
 #define AES_CRYPT_PARAM_SIZE_CBC_CTR	28
 
-#define SIGMA_SESSION_ID_ONE	0x1
-#define SIGMA_UNKNOWN_SESSION	0xffffffff
+#define FCS_REQUEST_TIMEOUT	msecs_to_jiffies(SVC_FCS_REQUEST_TIMEOUT_MS)
+#define FCS_COMPLETED_TIMEOUT	msecs_to_jiffies(SVC_COMPLETED_TIMEOUT_MS)
 
-#define FCS_REQUEST_TIMEOUT (msecs_to_jiffies(SVC_FCS_REQUEST_TIMEOUT_MS))
-#define FCS_COMPLETED_TIMEOUT (msecs_to_jiffies(SVC_COMPLETED_TIMEOUT_MS))
-
-/*SDM required minimun 8 bytes of data for crypto service*/
+/* SDM required minimun 8 bytes of data for crypto service */
 #define CRYPTO_SERVICE_MIN_DATA_SIZE	8
 
 typedef void (*fcs_callback)(struct stratix10_svc_client *client,
@@ -82,23 +79,26 @@ static void fcs_data_callback(struct stratix10_svc_client *client,
 {
 	struct intel_fcs_priv *priv = client->priv;
 
-	if ((data->status == BIT(SVC_STATUS_OK)) ||
-	    (data->status == BIT(SVC_STATUS_COMPLETED))) {
+	switch (data->status) {
+	case BIT(SVC_STATUS_OK):
+	case BIT(SVC_STATUS_COMPLETED):
 		priv->status = 0;
 		priv->kbuf = data->kaddr2;
 		priv->size = *((unsigned int *)data->kaddr3);
-	} else if (data->status == BIT(SVC_STATUS_ERROR)) {
+		break;
+	case BIT(SVC_STATUS_ERROR):
 		priv->status = *((unsigned int *)data->kaddr1);
 		dev_err(client->dev, "error, mbox_error=0x%x\n", priv->status);
 		priv->kbuf = data->kaddr2;
-		priv->size = (data->kaddr3) ?
-			*((unsigned int *)data->kaddr3) : 0;
-	} else if ((data->status == BIT(SVC_STATUS_BUSY)) ||
-		   (data->status == BIT(SVC_STATUS_NO_RESPONSE))) {
+		priv->size = (data->kaddr3) ? *((unsigned int *)data->kaddr3) : 0;
+		break;
+	case BIT(SVC_STATUS_BUSY):
+	case BIT(SVC_STATUS_NO_RESPONSE):
 		priv->status = 0;
 		priv->kbuf = NULL;
 		priv->size = 0;
-	} else {
+		break;
+	default:
 		dev_err(client->dev, "rejected, invalid param\n");
 		priv->status = -EINVAL;
 		priv->kbuf = NULL;
@@ -113,21 +113,27 @@ static void fcs_vab_callback(struct stratix10_svc_client *client,
 {
 	struct intel_fcs_priv *priv = client->priv;
 
-	if (data->status == BIT(SVC_STATUS_ERROR)) {
+	switch (data->status) {
+	case BIT(SVC_STATUS_ERROR):
 		priv->status = *((unsigned int *)data->kaddr1);
 		dev_err(client->dev, "mbox_error=0x%x\n", priv->status);
-	} else if (data->status == BIT(SVC_STATUS_BUSY)) {
+		break;
+	case BIT(SVC_STATUS_BUSY):
 		priv->status = -ETIMEDOUT;
 		dev_err(client->dev, "timeout to get completed status\n");
-	} else if (data->status == BIT(SVC_STATUS_INVALID_PARAM)) {
+		break;
+	case BIT(SVC_STATUS_INVALID_PARAM):
 		priv->status = -EINVAL;
 		dev_err(client->dev, "request rejected\n");
-	} else if (data->status == BIT(SVC_STATUS_OK)) {
+		break;
+	case BIT(SVC_STATUS_OK):
 		priv->status = 0;
-	} else if (data->status == BIT(SVC_STATUS_NO_SUPPORT)) {
+		break;
+	case BIT(SVC_STATUS_NO_SUPPORT):
 		priv->status = -EINVAL;
 		dev_err(client->dev, "firmware doesn't support...\n");
-	} else {
+		break;
+	default:
 		priv->status = -EINVAL;
 		dev_err(client->dev, "rejected, invalid param\n");
 	}
@@ -141,12 +147,12 @@ static void fcs_crypto_sessionid_callback(struct stratix10_svc_client *client,
 	struct intel_fcs_priv *priv = client->priv;
 
 	priv->status = data->status;
-	if (data->status == BIT(SVC_STATUS_OK)) {
-		priv->status = 0;
-		priv->sid = *((unsigned int *)data->kaddr2);
-	} else if (data->status == BIT(SVC_STATUS_ERROR)) {
+	if (data->status == BIT(SVC_STATUS_ERROR)) {
 		priv->status = *((unsigned int *)data->kaddr1);
 		dev_err(client->dev, "mbox_error=0x%x\n", priv->status);
+	} else if (data->status == BIT(SVC_STATUS_OK)) {
+		priv->status = 0;
+		priv->sid = *((unsigned int *)data->kaddr2);
 	}
 
 	complete(&priv->completion);
@@ -175,16 +181,20 @@ static void fcs_mbox_send_cmd_callback(struct stratix10_svc_client *client,
 {
 	struct intel_fcs_priv *priv = client->priv;
 
-	if (data->status == BIT(SVC_STATUS_OK)) {
+	switch (data->status) {
+	case BIT(SVC_STATUS_OK):
 		priv->status =  0;
 		priv->size = *((unsigned int *)data->kaddr2);
-	} else if (data->status == BIT(SVC_STATUS_ERROR)) {
+		break;
+	case BIT(SVC_STATUS_ERROR):
 		priv->status = *((unsigned int *)data->kaddr1);
 		dev_err(client->dev, "mbox_error=0x%x\n", priv->status);
-	} else if (data->status == BIT(SVC_STATUS_INVALID_PARAM)) {
+		break;
+	case BIT(SVC_STATUS_INVALID_PARAM):
 		priv->status = -EINVAL;
 		dev_err(client->dev, "request rejected\n");
-	} else {
+		break;
+	default:
 		priv->status = -EINVAL;
 		dev_err(client->dev, "rejected, invalid param\n");
 	}
@@ -197,28 +207,22 @@ static int fcs_request_service(struct intel_fcs_priv *priv,
 {
 	struct stratix10_svc_client_msg *p_msg =
 			(struct stratix10_svc_client_msg *)msg;
-	int ret;
 
 	reinit_completion(&priv->completion);
-
-	ret = stratix10_svc_send(priv->chan, p_msg);
-	if (ret)
+	if (stratix10_svc_send(priv->chan, p_msg))
 		return -EINVAL;
 
-	ret = wait_for_completion_timeout(&priv->completion,
-							timeout);
-	if (!ret) {
+	if (!wait_for_completion_timeout(&priv->completion, timeout)) {
 		dev_err(priv->client.dev,
 			"timeout waiting for SMC call\n");
-		ret = -ETIMEDOUT;
-	} else
-		ret = 0;
+		return -ETIMEDOUT;
+	}
 
-	return ret;
+	return 0;
 }
 
 static void fcs_free_memory(struct intel_fcs_priv *priv,
-				void *buf1, void *buf2, void *buf3)
+			    void *buf1, void *buf2, void *buf3)
 {
 	if (buf1)
 		stratix10_svc_free_memory(priv->chan, buf1);
