@@ -1163,7 +1163,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		 msg->payload_length_output = CRYPTO_GET_KEY_INFO_MAX_SZ;
 		 msg->arg[0] = data->com_paras.k_object.sid;
 		 msg->arg[1] = data->com_paras.k_object.kid;
-		 priv->client.receive_cb = fcs_attestation_callback;
 
 		 ret = fcs_request_service(priv, (void *)msg,
 					   FCS_REQUEST_TIMEOUT);
@@ -1316,7 +1315,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			msg->payload_length = data_size;
 			msg->payload_output = d_buf;
 			msg->payload_length_output = data_size;
-			priv->client.receive_cb = fcs_attestation_callback;
 
 			ret = fcs_request_service(priv, (void *)msg,
 						   FCS_REQUEST_TIMEOUT);
@@ -1451,7 +1449,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			msg->payload_length = data_size;
 			msg->payload_output = d_buf;
 			msg->payload_length_output = AES_CRYPT_CMD_MAX_SZ;
-			priv->client.receive_cb = fcs_attestation_callback;
 
 			ret = fcs_request_service(priv, (void *)msg,
 						10 * FCS_REQUEST_TIMEOUT);
@@ -1581,7 +1578,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			msg->payload_length = data_size;
 			msg->payload_output = d_buf;
 			msg->payload_length_output = out_sz;
-			priv->client.receive_cb = fcs_attestation_callback;
 
 			ret = fcs_request_service(priv, (void *)msg,
 						10 * FCS_REQUEST_TIMEOUT);
@@ -1679,7 +1675,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		 msg->payload_length = in_sz;
 		 msg->payload_output = d_buf;
 		 msg->payload_length_output = out_sz;
-		 priv->client.receive_cb = fcs_attestation_callback;
 
 		 ret = fcs_request_service(priv, (void *)msg,
 					   10 * FCS_REQUEST_TIMEOUT);
@@ -1783,7 +1778,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			msg->payload_length = data_size;
 			msg->payload_output = d_buf;
 			msg->payload_length_output = out_sz;
-			priv->client.receive_cb = fcs_attestation_callback;
 
 			ret = fcs_request_service(priv, (void *)msg,
 						10 * FCS_REQUEST_TIMEOUT);
@@ -1881,7 +1875,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		 msg->payload_length = in_sz;
 		 msg->payload_output = d_buf;
 		 msg->payload_length_output = out_sz;
-		 priv->client.receive_cb = fcs_attestation_callback;
 
 		 ret = fcs_request_service(priv, (void *)msg,
 					   10 * FCS_REQUEST_TIMEOUT);
@@ -2000,7 +1993,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			msg->payload_length = data_size;
 			msg->payload_output = d_buf;
 			msg->payload_length_output = out_sz;
-			priv->client.receive_cb = fcs_attestation_callback;
 
 			ret = fcs_request_service(priv, (void *)msg,
 						10 * FCS_REQUEST_TIMEOUT);
@@ -2088,7 +2080,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		 msg->payload_length = 0;
 		 msg->payload_output = d_buf;
 		 msg->payload_length_output = out_sz;
-		 priv->client.receive_cb = fcs_attestation_callback;
 
 		 ret = fcs_request_service(priv, (void *)msg,
 					   10 * FCS_REQUEST_TIMEOUT);
@@ -2193,7 +2184,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		msg->payload_length = in_sz;
 		msg->payload_output = d_buf;
 		msg->payload_length_output = out_sz;
-		priv->client.receive_cb = fcs_attestation_callback;
 
 		ret = fcs_request_service(priv, (void *)msg,
 					   10 * FCS_REQUEST_TIMEOUT);
@@ -2247,7 +2237,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		msg->arg[0] = sid;
 		msg->arg[1] = cid;
 		msg->arg[2] = out_sz;
-		priv->client.receive_cb = fcs_attestation_callback;
 
 		ret = fcs_request_service(priv, (void *)msg,
 					  FCS_REQUEST_TIMEOUT);
@@ -2357,7 +2346,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		msg->payload_length = in_sz;
 		msg->payload_output = d_buf;
 		msg->payload_length_output = AES_CRYPT_CMD_MAX_SZ;
-		priv->client.receive_cb = fcs_attestation_callback;
 
 		ret = fcs_request_service(priv, (void *)msg,
 					  10 * FCS_REQUEST_TIMEOUT);
