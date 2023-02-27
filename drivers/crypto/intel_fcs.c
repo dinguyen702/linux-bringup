@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2020, Intel Corporation
+ * Copyright (C) 2023, Intel Corporation
  */
 
 #include <linux/arm-smccc.h>
@@ -272,7 +272,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		dev_dbg(dev, "FW size=%ld\n", fw->size);
 		s_buf = stratix10_svc_allocate_memory(priv->chan, fw->size);
-		if (!s_buf) {
+		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed to allocate VAB buffer\n");
 			release_firmware(fw);
 			mutex_unlock(&priv->lock);
@@ -338,14 +338,14 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		datasz = data->com_paras.c_request.size + tsz;
 
 		s_buf = stratix10_svc_allocate_memory(priv->chan, datasz);
-		if (!s_buf) {
+		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed to allocate VAB buffer\n");
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
 		}
 
 		ps_buf = stratix10_svc_allocate_memory(priv->chan, PS_BUF_SIZE);
-		if (!ps_buf) {
+		if (IS_ERR(ps_buf)) {
 			dev_err(dev, "failed to allocate p-status buf\n");
 			stratix10_svc_free_memory(priv->chan, s_buf);
 			mutex_unlock(&priv->lock);
@@ -414,7 +414,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		s_buf = stratix10_svc_allocate_memory(priv->chan,
 						      RANDOM_NUMBER_SIZE);
-		if (!s_buf) {
+		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed to allocate RNG buffer\n");
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
@@ -475,7 +475,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		s_buf = stratix10_svc_allocate_memory(priv->chan,
 					data->com_paras.gp_data.size);
-		if (!s_buf) {
+		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed allocate provision buffer\n");
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
@@ -577,21 +577,21 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		/* allocate buffer for both source and destination */
 		s_buf = stratix10_svc_allocate_memory(priv->chan,
 						      DEC_MAX_SZ);
-		if (!s_buf) {
+		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed allocate encrypt src buf\n");
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
 		}
 		d_buf = stratix10_svc_allocate_memory(priv->chan,
 						      ENC_MAX_SZ);
-		if (!d_buf) {
+		if (IS_ERR(d_buf)) {
 			dev_err(dev, "failed allocate encrypt dst buf\n");
 			stratix10_svc_free_memory(priv->chan, s_buf);
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
 		}
 		ps_buf = stratix10_svc_allocate_memory(priv->chan, PS_BUF_SIZE);
-		if (!ps_buf) {
+		if (IS_ERR(ps_buf)) {
 			dev_err(dev, "failed allocate p-status buffer\n");
 			fcs_free_memory(priv, s_buf, d_buf, NULL);
 			mutex_unlock(&priv->lock);
@@ -701,14 +701,14 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		/* allocate buffer for both source and destination */
 		s_buf = stratix10_svc_allocate_memory(priv->chan,
 						      ENC_MAX_SZ);
-		if (!s_buf) {
+		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed allocate decrypt src buf\n");
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
 		}
 		d_buf = stratix10_svc_allocate_memory(priv->chan,
 						      DEC_MAX_SZ);
-		if (!d_buf) {
+		if (IS_ERR(d_buf)) {
 			dev_err(dev, "failed allocate decrypt dst buf\n");
 			stratix10_svc_free_memory(priv->chan, s_buf);
 			mutex_unlock(&priv->lock);
@@ -717,7 +717,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		ps_buf = stratix10_svc_allocate_memory(priv->chan,
 						       PS_BUF_SIZE);
-		if (!ps_buf) {
+		if (IS_ERR(ps_buf)) {
 			dev_err(dev, "failed allocate p-status buffer\n");
 			fcs_free_memory(priv, s_buf, d_buf, NULL);
 			mutex_unlock(&priv->lock);
@@ -870,7 +870,7 @@ static int fcs_rng_read(struct hwrng *rng, void *buf, size_t max, bool wait)
 
 	s_buf = stratix10_svc_allocate_memory(priv->chan,
 					      RANDOM_NUMBER_SIZE);
-	if (!s_buf) {
+	if (IS_ERR(s_buf)) {
 		dev_err(dev, "failed to allocate random number buffer\n");
 		mutex_unlock(&priv->lock);
 		return -ENOMEM;
