@@ -181,18 +181,20 @@ static int fcs_request_service(struct intel_fcs_priv *priv,
 {
 	struct stratix10_svc_client_msg *p_msg =
 			(struct stratix10_svc_client_msg *)msg;
+	int ret = 0;
 
 	reinit_completion(&priv->completion);
 	if (stratix10_svc_send(priv->chan, p_msg))
-		return -EINVAL;
+		ret = -EINVAL;
 
 	if (!wait_for_completion_timeout(&priv->completion, timeout)) {
 		dev_err(priv->client.dev,
 			"timeout waiting for SMC call\n");
-		return -ETIMEDOUT;
+		ret = -ETIMEDOUT;
 	}
 
-	return 0;
+	dev_dbg(dev, "fcs_request_service msg=%d ret=%d\n", p_msg->command, ret);
+	return ret;
 }
 
 static void fcs_free_memory(struct intel_fcs_priv *priv,
@@ -232,7 +234,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 	unsigned int buf_sz;
 	int ret = 0;
 	int i;
-	int timeout;
 
 	priv = container_of(file->private_data, struct intel_fcs_priv, miscdev);
 	dev = priv->client.dev;
@@ -270,7 +271,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			return -EFAULT;
 		}
 
-		dev_dbg(dev, "FW size=%ld\n", fw->size);
 		s_buf = stratix10_svc_allocate_memory(priv->chan, fw->size);
 		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed to allocate VAB buffer\n");
@@ -290,14 +290,12 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		ret = fcs_request_service(priv, (void *)msg,
 					  FCS_REQUEST_TIMEOUT);
-		dev_dbg(dev, "fcs_request_service ret=%d\n", ret);
 		if (!ret && !priv->status) {
 			/* to query the complete status */
 			msg->command = COMMAND_POLL_SERVICE_STATUS;
 			priv->client.receive_cb = fcs_data_callback;
 			ret = fcs_request_service(priv, (void *)msg,
 						  FCS_COMPLETED_TIMEOUT);
-			dev_dbg(dev, "fcs_request_service ret=%d\n", ret);
 			if (!ret && !priv->status)
 				data->status = 0;
 			else
@@ -307,13 +305,11 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
 			dev_err(dev, "failure on copy_to_user\n");
-			fcs_close_services(priv, s_buf, NULL);
 			ret = -EFAULT;
 		}
 
 		fcs_close_services(priv, s_buf, NULL);
 		break;
-
 	case INTEL_FCS_DEV_SEND_CERTIFICATE:
 		if (copy_from_user(data, (void __user *)arg, sizeof(*data))) {
 			dev_err(dev, "failure on copy_from_user\n");
@@ -373,7 +369,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		ret = fcs_request_service(priv, (void *)msg,
 					  FCS_REQUEST_TIMEOUT);
-		dev_dbg(dev, "fcs_request_service ret=%d\n", ret);
 		if (!ret && !priv->status) {
 			/* to query the complete status */
 			msg->payload = ps_buf;
@@ -382,7 +377,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			priv->client.receive_cb = fcs_data_callback;
 			ret = fcs_request_service(priv, (void *)msg,
 						  FCS_COMPLETED_TIMEOUT);
-			dev_dbg(dev, "request service ret=%d\n", ret);
 			if (!ret && !priv->status)
 				data->status = 0;
 			else {
@@ -540,8 +534,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			priv->client.receive_cb = fcs_data_callback;
 			ret = fcs_request_service(priv, (void *)msg,
 						  FCS_COMPLETED_TIMEOUT);
-			dev_dbg(dev, "request service ret=%d\n", ret);
-
 			if (!ret && !priv->status) {
 				if (!priv->kbuf) {
 					dev_err(dev, "failure on kbuf\n");
@@ -573,8 +565,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 
 		if (copy_to_user((void __user *)arg, data, sizeof(*data))) {
 			dev_err(dev, "failure on copy_to_user\n");
-			fcs_free_memory(priv, ps_buf, s_buf, d_buf);
-			fcs_close_services(priv, NULL, NULL);
 			ret = -EFAULT;
 		}
 
@@ -613,8 +603,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		/* allocate buffer for both source and destination */
-		s_buf = stratix10_svc_allocate_memory(priv->chan,
-						      ENC_MAX_SZ);
+		s_buf = stratix10_svc_allocate_memory(priv->chan, ENC_MAX_SZ);
 		if (IS_ERR(s_buf)) {
 			dev_err(dev, "failed allocate decrypt src buf\n");
 			mutex_unlock(&priv->lock);
@@ -666,7 +655,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			priv->client.receive_cb = fcs_data_callback;
 			ret = fcs_request_service(priv, (void *)msg,
 						  FCS_COMPLETED_TIMEOUT);
-			dev_dbg(dev, "request service ret=%d\n", ret);
 			if (!ret && !priv->status) {
 				if (!priv->kbuf) {
 					dev_err(dev, "failure on kbuf\n");
