@@ -193,7 +193,6 @@ static int fcs_request_service(struct intel_fcs_priv *priv,
 		ret = -ETIMEDOUT;
 	}
 
-	dev_dbg(dev, "fcs_request_service msg=%d ret=%d\n", p_msg->command, ret);
 	return ret;
 }
 
@@ -218,8 +217,7 @@ static void fcs_close_services(struct intel_fcs_priv *priv,
 	mutex_unlock(&priv->lock);
 }
 
-static long fcs_ioctl(struct file *file, unsigned int cmd,
-		      unsigned long arg)
+static long fcs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct intel_fcs_dev_ioctl *data;
 	struct intel_fcs_priv *priv;
@@ -278,7 +276,6 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 			mutex_unlock(&priv->lock);
 			return -ENOMEM;
 		}
-
 		memcpy(s_buf, fw->data, fw->size);
 
 		msg->payload_length = fw->size;
@@ -288,8 +285,7 @@ static long fcs_ioctl(struct file *file, unsigned int cmd,
 		msg->payload = s_buf;
 		priv->client.receive_cb = fcs_vab_callback;
 
-		ret = fcs_request_service(priv, (void *)msg,
-					  FCS_REQUEST_TIMEOUT);
+		ret = fcs_request_service(priv, (void *)msg, FCS_REQUEST_TIMEOUT);
 		if (!ret && !priv->status) {
 			/* to query the complete status */
 			msg->command = COMMAND_POLL_SERVICE_STATUS;
@@ -825,8 +821,7 @@ static int fcs_driver_probe(struct platform_device *pdev)
 	priv->sid = INVALID_ID;
 
 	mutex_init(&priv->lock);
-	priv->chan = stratix10_svc_request_channel_byname(&priv->client,
-							  SVC_CLIENT_FCS);
+	priv->chan = stratix10_svc_request_channel_byname(&priv->client, SVC_CLIENT_FCS);
 	if (IS_ERR(priv->chan)) {
 		dev_err(dev, "couldn't get service channel %s\n",
 			SVC_CLIENT_FCS);
@@ -926,4 +921,3 @@ module_exit(fcs_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Intel FGPA Crypto Services Driver");
-MODULE_AUTHOR("Richard Gong <richard.gong@intel.com>");
