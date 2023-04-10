@@ -2781,6 +2781,12 @@ M:	Dinh Nguyen <dinguyen@kernel.org>
 S:	Maintained
 F:	drivers/edac/altera_edac.[ch]
 
+ARM/SOCFPGA HARDWARE MONITOR
+M:	Dinh Nguyen <dinh.nguyen@linux.intel.com>
+S:	Maintained
+F:	drivers/hwmon/socfpga-hwmon.c
+F:	Documentation/devicetree/bindings/hwmon/intel,socfpga-hwmon.yaml
+
 ARM/SPREADTRUM SoC SUPPORT
 M:	Orson Zhai <orsonzhai@gmail.com>
 M:	Baolin Wang <baolin.wang7@gmail.com>
