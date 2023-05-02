@@ -347,7 +347,6 @@ static void svc_thread_cmd_config_status(struct stratix10_svc_controller *ctrl,
 		cb_data->status = BIT(SVC_STATUS_BUSY);
 	} else if (res.a0 == INTEL_SIP_SMC_STATUS_OK) {
 		cb_data->status = BIT(SVC_STATUS_COMPLETED);
-		cb_data->kaddr1 = (res.a1) ? &res.a1 : NULL;
 		cb_data->kaddr2 = (res.a2) ?
 				  svc_pa_to_va(res.a2) : NULL;
 		cb_data->kaddr3 = (res.a3) ? &res.a3 : NULL;
@@ -402,7 +401,6 @@ static void svc_thread_recv_status_ok(struct stratix10_svc_data *p_data,
 	case COMMAND_FCS_CRYPTO_ECDSA_HASH_VERIFY_INIT:
 	case COMMAND_FCS_CRYPTO_ECDSA_SHA2_VERIFY_INIT:
 	case COMMAND_FCS_CRYPTO_ECDSA_GET_PUBLIC_KEY_INIT:
-	case COMMAND_FCS_CRYPTO_ECDH_REQUEST_INIT:
 		cb_data->status = BIT(SVC_STATUS_OK);
 		break;
 	case COMMAND_RECONFIG_DATA_SUBMIT:
@@ -618,11 +616,6 @@ static int svc_normal_to_secure_thread(void *data)
 			a1 = 0;
 			a2 = 0;
 			break;
-		case COMMAND_RSU_DCMF_STATUS:
-			a0 = INTEL_SIP_SMC_RSU_DCMF_STATUS;
-			a1 = 0;
-			a2 = 0;
-			break;
 
 		/* for FCS */
 		case COMMAND_FCS_DATA_ENCRYPTION:
@@ -669,7 +662,7 @@ static int svc_normal_to_secure_thread(void *data)
 			break;
 		case COMMAND_FCS_PSGSIGMA_TEARDOWN:
 			a0 = INTEL_SIP_SMC_FCS_PSGSIGMA_TEARDOWN;
-			a1 = pdata->arg[0];
+			a1 = 0;
 			a2 = 0;
 			break;
 		case COMMAND_FCS_GET_CHIP_ID:
@@ -1238,8 +1231,9 @@ static int svc_normal_to_secure_thread(void *data)
 			pr_err("%s: STATUS_ERROR\n", __func__);
 			cbdata->status = BIT(SVC_STATUS_ERROR);
 			cbdata->kaddr1 = &res.a1;
-			cbdata->kaddr2 = NULL;
-			cbdata->kaddr3 = NULL;
+			cbdata->kaddr2 = (res.a2) ?
+				svc_pa_to_va(res.a2) : NULL;
+			cbdata->kaddr3 = (res.a3) ? &res.a3 : NULL;
 			pdata->chan->scl->receive_cb(pdata->chan->scl, cbdata);
 			break;
 		case INTEL_SIP_SMC_STATUS_NO_RESPONSE:
@@ -1288,7 +1282,7 @@ static int svc_normal_to_secure_thread(void *data)
  * physical address of memory block reserved by secure monitor software at
  * secure world.
  *
- * svc_normal_to_secure_shm_thread() calls do_exit() directly since it is a
+ * svc_normal_to_secure_shm_thread() terminates directly since it is a
  * standlone thread for which no one will call kthread_stop() or return when
  * 'kthread_should_stop()' is true.
  */
@@ -1312,7 +1306,7 @@ static int svc_normal_to_secure_shm_thread(void *data)
 	}
 
 	complete(&sh_mem->sync_complete);
-	do_exit(0);
+	return 0;
 }
 
 /**
@@ -1917,8 +1911,23 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 	}
 
 	ret = platform_device_add(svc->stratix10_svc_rsu);
-	if (ret)
-		goto err_put_device;
+	if (ret) {
+		platform_device_put(svc->stratix10_svc_rsu);
+		goto err_unregister_dev;
+	}
+
+	svc->intel_svc_fcs = platform_device_alloc(INTEL_FCS, 1);
+	if (!svc->intel_svc_fcs) {
+		dev_err(dev, "failed to allocate %s device\n", INTEL_FCS);
+		ret = -ENOMEM;
+		goto err_unregister_dev;
+	}
+
+	ret = platform_device_add(svc->intel_svc_fcs);
+	if (ret) {
+		platform_device_put(svc->intel_svc_fcs);
+		goto err_unregister_dev;
+	}
 
 	dev_set_drvdata(dev, svc);
 
@@ -1926,10 +1935,11 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_put_device:
-	platform_device_put(svc->stratix10_svc_rsu);
+err_unregister_dev:
+	platform_device_unregister(svc->stratix10_svc_rsu);
 err_destroy_pool:
 	gen_pool_destroy(genpool);
+
 	return ret;
 }
 
