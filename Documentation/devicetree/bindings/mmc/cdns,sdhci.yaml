@@ -23,6 +23,8 @@ properties:
           - const: cdns,sd4hc
       - description: Cadence SD6HC controller
         items:
+          - enum:
+              - altr,agilex5-sd6hc
           - const: cdns,sd6hc
 
   reg:
