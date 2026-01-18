@@ -7,6 +7,7 @@
 
 #include <linux/bitfield.h>
 #include <linux/bits.h>
+#include <linux/dma-mapping.h>
 #include <linux/module.h>
 
 #include "sdhci-cadence.h"
@@ -84,6 +85,7 @@ struct sdhci_cdns4_phy_cfg {
 struct sdhci_cdns_drv_data {
 	int (*init)(struct platform_device *pdev);
 	const struct sdhci_pltfm_data pltfm_data;
+	u64 dma_mask;
 };
 
 static const struct sdhci_cdns4_phy_cfg sdhci_cdns4_phy_cfgs[] = {
@@ -191,6 +193,26 @@ static unsigned int sdhci_cdns_get_timeout_clock(struct sdhci_host *host)
 	 * Base Clock Frequency.
 	 */
 	return host->max_clk;
+}
+
+/**
+ * sdhci_cdns_set_dma_mask - Set platform-specific DMA mask
+ * @host: SDHCI host controller
+ *
+ * Configure DMA mask based on platform capabilities to avoid IOMMU
+ * address allocation beyond controller's reach or unnecessary bounce
+ * buffers.
+ */
+static int sdhci_cdns_set_dma_mask(struct sdhci_host *host)
+{
+	struct mmc_host *mmc = host->mmc;
+	struct device *dev = mmc_dev(mmc);
+	const struct sdhci_cdns_drv_data *data = of_device_get_match_data(dev);
+
+	if (data->dma_mask)
+		return dma_set_mask_and_coherent(dev, data->dma_mask);
+
+	return 0;
 }
 
 static void sdhci_cdns_set_emmc_mode(struct sdhci_cdns_priv *priv, u32 mode)
