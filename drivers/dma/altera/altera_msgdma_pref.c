@@ -17,6 +17,26 @@ static uint msgdma_debug_level;
 module_param(msgdma_debug_level, uint, 0644);
 MODULE_PARM_DESC(msgdma_debug_level, "Global debug level for Altera mSGDMA driver");
 
+static void altera_msgdma_pref_clear_irq(struct altera_msgdma_private *priv)
+{
+	dma_set_bit(priv->pref_csr, msgdma_pref_csroffs(status),
+		    MSGDMA_PREF_STAT_IRQ);
+}
+
+static inline void altera_msgdma_dmaintr_enable(struct altera_msgdma_private *priv)
+{
+	altera_msgdma_pref_clear_irq(priv);
+	dma_set_bit(priv->pref_csr, msgdma_pref_csroffs(control),
+		    MSGDMA_PREF_CTL_GLOBAL_INTR);
+}
+
+static inline void altera_msgdma_dmaintr_disable(struct altera_msgdma_private *priv)
+{
+	altera_msgdma_pref_clear_irq(priv);
+	dma_clear_bit(priv->pref_csr, msgdma_pref_csroffs(control),
+		      MSGDMA_PREF_CTL_GLOBAL_INTR);
+}
+
 static int altera_request_and_map(struct platform_device *pdev, const char *name,
 				  struct resource **res, void __iomem **ptr)
 {
@@ -295,6 +315,24 @@ static void altera_msgdma_pref_start_dma(struct altera_msgdma_private *priv)
 		    MSGDMA_PREF_CTL_DESC_POLL_EN | MSGDMA_PREF_CTL_RUN);
 }
 
+static u64 timestamp_to_ns(struct msgdma_pref_extended_desc *desc)
+{
+	u64 ns = 0;
+	u64 second;
+	u32 tmp;
+
+	tmp = desc->timestamp_96b[0] >> 16;
+	tmp |= (desc->timestamp_96b[1] << 16);
+
+	second = desc->timestamp_96b[2];
+	second <<= 16;
+	second |= ((desc->timestamp_96b[1] & 0xffff0000) >> 16);
+
+	ns = second * NSEC_PER_SEC + tmp;
+
+	return ns;
+}
+
 static enum dma_status altera_msgdma_tx_status(struct dma_chan *chan,
 					       dma_cookie_t cookie,
 					       struct dma_tx_state *state)
@@ -453,6 +491,70 @@ altera_msgdma_prep_slave_sg(struct dma_chan *dchan,
 	return client_desc;
 }
 
+static void copy_metadata_info(struct msgdma_pref_extended_desc *desc,
+			       struct dma_metadata *metadata)
+{
+	metadata->timestamp_u64 = timestamp_to_ns(desc);
+	metadata->transfer_len = desc->bytes_transferred;
+}
+
+static void msgdma_tasklet_cb(struct tasklet_struct *t)
+{
+	struct altera_msgdma_private *priv = from_tasklet(priv, t, tasklet_on_irq);
+	struct dmaengine_result dma_result = {.result = DMA_TRANS_NOERROR};
+	struct msgdma_pref_extended_desc *desc = priv->pref_desc;
+	u32 chan_ring_size = priv->chan_ring_size;
+	struct dma_async_tx_descriptor *async_tx;
+	struct dma_metadata *metadata = NULL;
+	u64 ix = priv->pref_cons;
+	u64 snap_prod = 0;
+	u32 real_cons = 0;
+	bool is_irq_set = false;
+
+	async_tx = priv->async_tx;
+
+	snap_prod = priv->pref_prod;
+
+	while (ix < snap_prod) {
+		real_cons = ix++ % chan_ring_size;
+
+		if (!(desc[real_cons].desc_control & MSGDMA_PREF_DESC_CTL_OWNED_BY_HW)) {
+			metadata = &priv->dma_metadata[real_cons];
+
+			copy_metadata_info(&desc[real_cons], metadata);
+
+			dma_cookie_complete(&async_tx[real_cons]);
+
+			if (async_tx[real_cons].flags & DMA_PREP_INTERRUPT)
+				dmaengine_desc_get_callback_invoke(&async_tx[real_cons],
+								   &dma_result);
+
+			async_tx[real_cons].callback = NULL;
+			async_tx[real_cons].callback_result = NULL;
+			async_tx[real_cons].callback_param = NULL;
+			async_tx[real_cons].flags = 0;
+			priv->pref_cons++;
+		} else {
+			/* buffer comsumption happens serially */
+			break;
+		}
+	}
+
+	/*
+	 * this is to cater to the narrow case where the above loop of callback handler is over
+	 * and packet arrives. We can save on an IRQ generation
+	 */
+	is_irq_set = dma_bit_is_set(priv->pref_csr,
+				    msgdma_pref_csroffs(status), MSGDMA_PREF_STAT_IRQ);
+
+	if (is_irq_set) {
+		altera_msgdma_pref_clear_irq(priv);
+		tasklet_hi_schedule(&priv->tasklet_on_irq);
+	} else {
+		enable_irq(priv->irq);
+	}
+}
+
 static void altera_msgdma_issue_pending(struct dma_chan *chan)
 {
 	struct msgdma_pref_extended_desc *desc;
@@ -489,8 +591,14 @@ static int altera_msgdma_alloc_chan_resources(struct dma_chan *dchan)
 	priv = chantopriv(dchan);
 
 	altera_msgdma_pref_reset(priv);
+	altera_msgdma_dmaintr_disable(priv);
 
 	altera_msgdma_pref_start_dma(priv);
+	enable_irq(priv->irq);
+
+	tasklet_enable(&priv->tasklet_on_irq);
+
+	altera_msgdma_dmaintr_enable(priv);
 	priv->dma_paused = false;
 
 	return 0;
@@ -505,6 +613,10 @@ static int altera_msgdma_device_pause(struct dma_chan *chan)
 
 	if (priv->dma_paused)
 		return 0;
+
+	altera_msgdma_dmaintr_disable(priv);
+
+	tasklet_disable(&priv->tasklet_on_irq);
 
 	spin_lock_irqsave(&priv->dma_lock, flags);
 
@@ -535,9 +647,12 @@ static int altera_msgdma_device_resume(struct dma_chan *chan)
 	dma_set_bit(priv->pref_csr, msgdma_pref_csroffs(control),
 		    MSGDMA_PREF_CTL_RUN | MSGDMA_PREF_CTL_DESC_POLL_EN);
 
+	altera_msgdma_dmaintr_enable(priv);
 	priv->dma_paused = false;
 
 	spin_unlock_irqrestore(&priv->dma_lock, flags);
+
+	tasklet_enable(&priv->tasklet_on_irq);
 
 	return 0;
 }
@@ -574,6 +689,9 @@ static int altera_msgdma_device_terminate_all(struct dma_chan *dchan)
 	priv = chantopriv(dchan);
 	desc = priv->pref_desc;
 
+	altera_msgdma_dmaintr_disable(priv);
+	disable_irq_nosync(priv->irq);
+
 	altera_msgdma_pref_reset(priv);
 
 	spin_lock_irqsave(&priv->dma_lock, flags);
@@ -609,6 +727,8 @@ static void altera_msgdma_synchronize(struct dma_chan *dchan)
 	desc = priv->pref_desc;
 	async_tx = priv->async_tx;
 
+	tasklet_disable(&priv->tasklet_on_irq);
+
 	spin_lock_irqsave(&priv->dma_lock, flags);
 
 	/* handle the packets which has been processed but callbacks has not beed called yet */
@@ -633,11 +753,16 @@ static void altera_msgdma_synchronize(struct dma_chan *dchan)
 	priv->pref_pending = 0;
 
 	spin_unlock_irqrestore(&priv->dma_lock, flags);
+
+	tasklet_enable(&priv->tasklet_on_irq);
 }
 
 static void altera_msgdma_free_chan_resources(struct dma_chan *chan)
 {
+	struct altera_msgdma_private *priv = chantopriv(chan);
+
 	altera_msgdma_device_terminate_all(chan);
+	tasklet_disable(&priv->tasklet_on_irq);
 }
 
 static void altera_msgdma_remove(struct platform_device *pdev)
@@ -652,6 +777,7 @@ static void altera_msgdma_remove(struct platform_device *pdev)
 	altera_msgdma_device_terminate_all(&priv->dma_chan);
 	altera_msgdma_synchronize(&priv->dma_chan);
 	altera_msgdma_free_chan_resources(&priv->dma_chan);
+	tasklet_kill(&priv->tasklet_on_irq);
 	dma_async_device_unregister(&priv->dma_dev);
 }
 
@@ -710,6 +836,22 @@ static inline int altera_msgdma_registration(struct platform_device *pdev)
 	return 0;
 }
 
+static irqreturn_t altera_msgdma_isr_handler(int irq, void *dev_id)
+{
+	struct altera_msgdma_private *priv;
+	struct dma_chan *dchan = dev_id;
+
+	priv = chantopriv(dchan);
+
+	disable_irq_nosync(priv->irq);
+
+	altera_msgdma_pref_clear_irq(priv);
+
+	tasklet_hi_schedule(&priv->tasklet_on_irq);
+
+	return IRQ_HANDLED;
+}
+
 static int altera_msgdma_dts_config(struct platform_device *pdev)
 {
 	struct altera_msgdma_private *priv;
@@ -721,6 +863,10 @@ static int altera_msgdma_dts_config(struct platform_device *pdev)
 	priv = platform_get_drvdata(pdev);
 
 	dmanp = pdev->dev.of_node;
+
+	priv->irq = platform_get_irq_byname(pdev, "dma-irq");
+	if (priv->irq < 0)
+		return priv->irq;
 
 	ret = altera_request_and_map(pdev, "dma_csr", &dma_res,
 				     (void __iomem **)(&priv->dma_csr));
@@ -782,6 +928,7 @@ static int altera_msgdma_dts_config(struct platform_device *pdev)
 static int altera_msgdma_probe(struct platform_device *pdev)
 {
 	struct altera_msgdma_private *priv;
+	const char *chan_name = NULL;
 	int ret = -ENOMEM;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(struct altera_msgdma_private),
@@ -816,6 +963,26 @@ static int altera_msgdma_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	ret = devm_request_irq(priv->dma_dev.dev, priv->irq,
+			       altera_msgdma_isr_handler,
+			       IRQF_SHARED,  priv->dma_chan.name,
+			       &priv->dma_chan);
+
+	if (ret) {
+		if (pdev->dev.of_node)
+			of_dma_controller_free(pdev->dev.of_node);
+		dma_async_device_unregister(&priv->dma_dev);
+		dev_err(&pdev->dev, "Unable to register interrupt %d\n", priv->irq);
+		return ret;
+	}
+
+	disable_irq_nosync(priv->irq);
+
+	chan_name = dev_name(priv->dma_dev.dev);
+
+	tasklet_setup(&priv->tasklet_on_irq, msgdma_tasklet_cb);
+	tasklet_disable(&priv->tasklet_on_irq);
+
 	ret = msgdma_pref_initialize(priv);
 	if (ret) {
 		if (pdev->dev.of_node)
@@ -826,8 +993,7 @@ static int altera_msgdma_probe(struct platform_device *pdev)
 	}
 
 	if (dma_msg_probe(priv))
-		dev_info(&pdev->dev, "%s channel ready to operate",
-			 dev_name(priv->dma_dev.dev));
+		dev_info(&pdev->dev, "%s channel ready to operate", chan_name);
 
 	return 0;
 }

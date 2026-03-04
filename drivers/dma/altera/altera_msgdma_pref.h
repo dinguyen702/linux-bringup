@@ -8,6 +8,7 @@
 
 #include <linux/dma/altera_dma_metadata.h>
 #include <linux/dmaengine.h>
+#include <linux/interrupt.h>
 #include <linux/device.h>
 #include <linux/debugfs.h>
 #include "dmaengine.h"
@@ -18,6 +19,7 @@
 
 /* mSGDMA Prefetcher Control */
 #define MSGDMA_PREF_CTL_PARK                             BIT(4)
+#define MSGDMA_PREF_CTL_GLOBAL_INTR                      BIT(3)
 #define MSGDMA_PREF_CTL_RESET                            BIT(2)
 #define MSGDMA_PREF_CTL_DESC_POLL_EN                     BIT(1)
 #define MSGDMA_PREF_CTL_RUN                              BIT(0)
@@ -167,6 +169,8 @@ struct altera_fpga_chan_fifo {
  *                       This ring is consumed by the prefetcher engine.
  * @async_tx:            DMAengine async transaction descriptor currently being prepared
  *                       or tracked for completion.
+ * @tasklet_on_irq:      Bottom-half handler scheduled from the DMA IRQ to process
+ *                       completions and enqueue more work.
  * @slave_cfg:           DMA slave configuration applied to this channel
  *                       (direction, addresses, burst sizes, widths).
  * @dma_metadata:        Pointer to per-transfer metadata buffer used for timestamp,
@@ -189,12 +193,14 @@ struct altera_fpga_chan_fifo {
  * @pref_pending:        Count of prefetch descriptors pending in hardware.
  * @msg_enable:          Driver message verbosity mask (netif-style or driver-specific bits).
  * @fifo_depth:          Depth of the hardware FIFO (in entries/words).
+ * @irq:                 IRQ number assigned to this MSGDMA channel/device.
  * @chan_ring_size:      Size of the prefetch descriptor ring (number of entries).
  * @dma_paused:          DMA channel paused state (true if paused).
  */
 struct altera_msgdma_private {
 	struct msgdma_pref_extended_desc *pref_desc;
 	struct dma_async_tx_descriptor *async_tx;
+	struct tasklet_struct tasklet_on_irq;
 	struct dma_slave_config slave_cfg;
 	struct dma_metadata *dma_metadata;
 	struct dentry *debugfs_dir;
@@ -214,6 +220,7 @@ struct altera_msgdma_private {
 	u32 pref_pending;
 	u32 msg_enable;
 	u32 fifo_depth;
+	int irq;
 	u16 chan_ring_size;
 	bool dma_paused;
 };
