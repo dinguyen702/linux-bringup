@@ -753,7 +753,7 @@ static int stratix10_rsu_probe(struct platform_device *pdev)
 		return PTR_ERR(priv->chan);
 	}
 
-	ret = stratix10_svc_add_async_client(priv->chan, false);
+	ret = stratix10_svc_add_async_client(priv->chan, true);
 	if (ret) {
 		dev_err(dev, "failed to add async client\n");
 		stratix10_svc_free_channel(priv->chan);
