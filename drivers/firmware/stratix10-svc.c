@@ -561,8 +561,10 @@ static int svc_normal_to_secure_thread(void *data)
 						pdata, sizeof(*pdata),
 						&chan->svc_fifo_lock);
 
-		if (!ret_fifo)
+		if (!ret_fifo) {
+			cond_resched();
 			continue;
+		}
 
 		pr_debug("get from FIFO pa=0x%016x, command=%u, size=%u\n",
 			 (unsigned int)pdata->paddr, pdata->command,
@@ -1131,7 +1133,7 @@ int stratix10_svc_add_async_client(struct stratix10_svc_chan *chan,
 		return -EALREADY;
 	}
 
-	if (use_unique_clientid &&
+	if (!use_unique_clientid &&
 	    atomic_read(&actrl->common_achan_refcount) > 0) {
 		chan->async_chan = actrl->common_async_chan;
 		atomic_inc(&actrl->common_achan_refcount);
@@ -1144,7 +1146,7 @@ int stratix10_svc_add_async_client(struct stratix10_svc_chan *chan,
 
 	ida_init(&achan->job_id_pool);
 
-	ret = ida_alloc_max(&actrl->async_id_pool, MAX_SDM_CLIENT_IDS,
+	ret = ida_alloc_max(&actrl->async_id_pool, MAX_SDM_CLIENT_IDS - 1,
 			    GFP_KERNEL);
 	if (ret < 0) {
 		dev_err(ctrl->dev,
@@ -1157,7 +1159,7 @@ int stratix10_svc_add_async_client(struct stratix10_svc_chan *chan,
 	achan->async_client_id = ret;
 	chan->async_chan = achan;
 
-	if (use_unique_clientid &&
+	if (!use_unique_clientid &&
 	    atomic_read(&actrl->common_achan_refcount) == 0) {
 		actrl->common_async_chan = achan;
 		atomic_inc(&actrl->common_achan_refcount);
@@ -1281,7 +1283,7 @@ int stratix10_svc_async_send(struct stratix10_svc_chan *chan, void *msg,
 	if (!handle)
 		return -ENOMEM;
 
-	ret = ida_alloc_max(&achan->job_id_pool, MAX_SDM_JOB_IDS,
+	ret = ida_alloc_max(&achan->job_id_pool, MAX_SDM_JOB_IDS - 1,
 			    GFP_KERNEL);
 	if (ret < 0) {
 		dev_err(ctrl->dev, "Failed to allocate job id\n");
@@ -1879,8 +1881,6 @@ void stratix10_svc_free_memory(struct stratix10_svc_chan *chan, void *kaddr)
 			list_del(&pmem->node);
 			return;
 		}
-
-	list_del(&svc_data_mem);
 }
 EXPORT_SYMBOL_GPL(stratix10_svc_free_memory);
 
