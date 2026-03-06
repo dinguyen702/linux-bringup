@@ -41,7 +41,7 @@
 #define SVC_NUM_CHANNEL				4
 #define FPGA_CONFIG_DATA_CLAIM_TIMEOUT_MS	2000
 #define FPGA_CONFIG_STATUS_TIMEOUT_SEC		30
-#define BYTE_TO_WORD_SIZE              4
+#define BYTE_TO_WORD_SIZE		4
 
 /* stratix10 service layer clients */
 #define STRATIX10_RSU				"stratix10-rsu"
@@ -316,7 +316,7 @@ static void *svc_pa_to_va(unsigned long addr)
 {
 	struct stratix10_svc_data_mem *pmem;
 
-	pr_debug("claim back P-addr=0x%016x\n", (unsigned int)addr);
+	pr_debug("claim back P-addr=0x%016lx\n", addr);
 	guard(mutex)(&svc_mem_lock);
 	list_for_each_entry(pmem, &svc_data_mem, node)
 		if (pmem->paddr == addr)
@@ -564,9 +564,8 @@ static int svc_normal_to_secure_thread(void *data)
 		if (!ret_fifo)
 			continue;
 
-		pr_debug("get from FIFO pa=0x%016x, command=%u, size=%u\n",
-			 (unsigned int)pdata->paddr, pdata->command,
-			 (unsigned int)pdata->size);
+		pr_debug("get from FIFO pa=0x%016lx, command=%u, size=%zu\n",
+			 pdata->paddr, pdata->command, pdata->size);
 
 		/* SDM can only process one command at a time */
 		pr_debug("%s: %s: Thread is waiting for mutex!\n",
@@ -718,21 +717,19 @@ static int svc_normal_to_secure_thread(void *data)
 			mutex_unlock(&ctrl->sdm_lock);
 			continue;
 		}
-		pr_debug("%s: %s: before SMC call -- a0=0x%016x a1=0x%016x",
-			 __func__, chan->name,
-			 (unsigned int)a0,
-			 (unsigned int)a1);
-		pr_debug(" a2=0x%016x\n", (unsigned int)a2);
-		pr_debug(" a3=0x%016x\n", (unsigned int)a3);
-		pr_debug(" a4=0x%016x\n", (unsigned int)a4);
-		pr_debug(" a5=0x%016x\n", (unsigned int)a5);
+		pr_debug("%s: %s: before SMC call -- a0=0x%016lx a1=0x%016lx",
+			 __func__, chan->name, a0, a1);
+		pr_debug(" a2=0x%016lx\n", a2);
+		pr_debug(" a3=0x%016lx\n", a3);
+		pr_debug(" a4=0x%016lx\n", a4);
+		pr_debug(" a5=0x%016lx\n", a5);
 		ctrl->invoke_fn(a0, a1, a2, a3, a4, a5, a6, a7, &res);
 
-		pr_debug("%s: %s: after SMC call -- res.a0=0x%016x",
-			 __func__, chan->name, (unsigned int)res.a0);
-		pr_debug(" res.a1=0x%016x, res.a2=0x%016x",
-			 (unsigned int)res.a1, (unsigned int)res.a2);
-		pr_debug(" res.a3=0x%016x\n", (unsigned int)res.a3);
+		pr_debug("%s: %s: after SMC call -- res.a0=0x%016lx",
+			 __func__, chan->name, res.a0);
+		pr_debug(" res.a1=0x%016lx, res.a2=0x%016lx",
+			 res.a1, res.a2);
+		pr_debug(" res.a3=0x%016lx\n", res.a3);
 
 		if (pdata->command == COMMAND_RSU_STATUS) {
 			if (res.a0 == INTEL_SIP_SMC_RSU_ERROR)
@@ -854,8 +851,8 @@ static int svc_normal_to_secure_shm_thread(void *data)
 		sh_mem->addr = res.a1;
 		sh_mem->size = res.a2;
 	} else {
-		pr_err("%s: after SMC call -- res.a0=0x%016x",  __func__,
-		       (unsigned int)res.a0);
+		pr_err("%s: after SMC call -- res.a0=0x%016lx",  __func__,
+		       res.a0);
 		sh_mem->addr = 0;
 		sh_mem->size = 0;
 	}
@@ -905,9 +902,8 @@ static int svc_get_sh_memory(struct platform_device *pdev,
 		return -ENOMEM;
 	}
 
-	dev_dbg(dev, "SM software provides paddr: 0x%016x, size: 0x%08x\n",
-		(unsigned int)sh_memory->addr,
-		(unsigned int)sh_memory->size);
+	dev_dbg(dev, "SM software provides paddr: 0x%016lx, size: 0x%08lx\n",
+		sh_memory->addr, sh_memory->size);
 
 	return 0;
 }
@@ -946,8 +942,8 @@ svc_create_memory_pool(struct platform_device *pdev,
 	}
 	vaddr = (unsigned long)va;
 	dev_dbg(dev,
-		"reserved memory vaddr: %p, paddr: 0x%16x size: 0x%8x\n",
-		va, (unsigned int)paddr, (unsigned int)size);
+		"reserved memory vaddr: %p, paddr: 0x%016llx size: 0x%08zx\n",
+		va, (unsigned long long)paddr, size);
 	if ((vaddr & page_mask) || (paddr & page_mask) ||
 	    (size & page_mask)) {
 		dev_err(dev, "page is not aligned\n");
@@ -1296,7 +1292,7 @@ int stratix10_svc_async_send(struct stratix10_svc_chan *chan, void *msg,
 	handle->cb_arg = cb_arg;
 	handle->achan = achan;
 
-	/*set the transaction jobid in args.a1*/
+	/* set the transaction jobid in args.a1 */
 	args.a1 =
 		STRATIX10_SIP_SMC_SET_TRANSACTIONID_X1(handle->transaction_id);
 
@@ -1312,7 +1308,7 @@ int stratix10_svc_async_send(struct stratix10_svc_chan *chan, void *msg,
 		args.a2 = p_msg->arg[0];
 		break;
 	default:
-		dev_err(ctrl->dev, "Invalid command ,%d\n", p_msg->command);
+		dev_err(ctrl->dev, "Invalid command, %d\n", p_msg->command);
 		ret = -EINVAL;
 		goto deallocate_id;
 	}
@@ -1348,7 +1344,7 @@ int stratix10_svc_async_send(struct stratix10_svc_chan *chan, void *msg,
 		break;
 	default:
 		dev_err(ctrl->dev,
-			"Failed to send async message ,got status as %ld\n",
+			"Failed to send async message, got status as %ld\n",
 			res.a0);
 		ret = -EIO;
 	}
@@ -1406,7 +1402,7 @@ static int stratix10_svc_async_prepare_response(struct stratix10_svc_chan *chan,
 		break;
 
 	default:
-		dev_alert(ctrl->dev, "Invalid command\n ,%d", p_msg->command);
+		dev_alert(ctrl->dev, "Invalid command, %d\n", p_msg->command);
 		return -ENOENT;
 	}
 	dev_dbg(ctrl->dev, "Async message completed transaction_id 0x%02x\n",
@@ -1487,7 +1483,7 @@ int stratix10_svc_async_poll(struct stratix10_svc_chan *chan,
 	}
 
 	dev_err(ctrl->dev,
-		"Failed to poll async message ,got status as %ld\n",
+		"Failed to poll async message, got status as %ld\n",
 		handle->res.a0);
 	return -EINVAL;
 }
@@ -1777,12 +1773,12 @@ int stratix10_svc_send(struct stratix10_svc_chan *chan, void *msg)
 	p_data->arg[2] = p_msg->arg[2];
 	p_data->size = p_msg->payload_length;
 	p_data->chan = chan;
-	pr_debug("%s: %s: put to FIFO pa=0x%016x, cmd=%x, size=%u\n",
+	pr_debug("%s: %s: put to FIFO pa=0x%016llx, cmd=%x, size=%zu\n",
 		 __func__,
 		 chan->name,
-		 (unsigned int)p_data->paddr,
+		 (unsigned long long)p_data->paddr,
 		 p_data->command,
-		 (unsigned int)p_data->size);
+		 p_data->size);
 
 	ret = kfifo_in_spinlocked(&chan->svc_fifo, p_data,
 				  sizeof(*p_data),
@@ -1842,8 +1838,10 @@ void *stratix10_svc_allocate_memory(struct stratix10_svc_chan *chan,
 
 	guard(mutex)(&svc_mem_lock);
 	va = gen_pool_alloc(genpool, s);
-	if (!va)
+	if (!va) {
+		devm_kfree(chan->ctrl->dev, pmem);
 		return ERR_PTR(-ENOMEM);
+	}
 
 	memset((void *)va, 0, s);
 	pa = gen_pool_virt_to_phys(genpool, va);
@@ -1852,8 +1850,8 @@ void *stratix10_svc_allocate_memory(struct stratix10_svc_chan *chan,
 	pmem->paddr = pa;
 	pmem->size = s;
 	list_add_tail(&pmem->node, &svc_data_mem);
-	pr_debug("%s: %s: va=%p, pa=0x%016x\n", __func__,
-		 chan->name, pmem->vaddr, (unsigned int)pmem->paddr);
+	pr_debug("%s: %s: va=%p, pa=0x%016llx\n", __func__,
+		 chan->name, pmem->vaddr, (unsigned long long)pmem->paddr);
 
 	return (void *)va;
 }
@@ -1880,7 +1878,8 @@ void stratix10_svc_free_memory(struct stratix10_svc_chan *chan, void *kaddr)
 			return;
 		}
 
-	list_del(&svc_data_mem);
+	pr_err("%s: virtual address %p not found in memory list\n",
+		__func__, kaddr);
 }
 EXPORT_SYMBOL_GPL(stratix10_svc_free_memory);
 
@@ -2081,7 +2080,7 @@ static int __init stratix10_svc_init(void)
 
 static void __exit stratix10_svc_exit(void)
 {
-	return platform_driver_unregister(&stratix10_svc_driver);
+	platform_driver_unregister(&stratix10_svc_driver);
 }
 
 subsys_initcall(stratix10_svc_init);
