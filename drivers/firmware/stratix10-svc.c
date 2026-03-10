@@ -40,7 +40,6 @@
 
 /* stratix10 service layer clients */
 #define STRATIX10_RSU				"stratix10-rsu"
-#define INTEL_FCS				"intel-fcs"
 
 typedef void (svc_invoke_fn)(unsigned long, unsigned long, unsigned long,
 			     unsigned long, unsigned long, unsigned long,
@@ -54,7 +53,6 @@ struct stratix10_svc_chan;
  */
 struct stratix10_svc {
 	struct platform_device *stratix10_svc_rsu;
-	struct platform_device *intel_svc_fcs;
 };
 
 /**
@@ -128,9 +126,9 @@ struct stratix10_svc_data {
  * @num_active_client: number of active service client
  * @node: list management
  * @genpool: memory pool pointing to the memory region
- * @task: pointer to the thread task which handles SMC or HVC call
  * @complete_status: state for completion
  * @invoke_fn: function to issue secure monitor call or hypervisor call
+ * @svc: manages the list of client svc drivers
  * @sdm_lock: only allows a single command single response to SDM
  *
  * This struct is used to create communication channels for service clients, to
@@ -145,7 +143,8 @@ struct stratix10_svc_controller {
 	struct gen_pool *genpool;
 	struct completion complete_status;
 	svc_invoke_fn *invoke_fn;
-	struct mutex *sdm_lock;
+	struct stratix10_svc *svc;
+	struct mutex sdm_lock;
 };
 
 /**
@@ -153,6 +152,9 @@ struct stratix10_svc_controller {
  * @ctrl: pointer to service controller which is the provider of this channel
  * @scl: pointer to service client which owns the channel
  * @name: service client name associated with the channel
+ * @task: pointer to the thread task which handles SMC or HVC call
+ * @svc_fifo: a queue for storing service message data (separate fifo for every channel)
+ * @svc_fifo_lock: protect access to service message data queue (locking pending fifo)
  * @lock: protect access to the channel
  *
  * This struct is used by service client to communicate with service layer, each
@@ -457,7 +459,6 @@ static int svc_normal_to_secure_thread(void *data)
 	struct arm_smccc_res res;
 	unsigned long a0, a1, a2, a3, a4, a5, a6, a7;
 	int ret_fifo = 0;
-	bool sdm_lock_owned = false;
 
 	pdata =  kmalloc(sizeof(*pdata), GFP_KERNEL);
 	if (!pdata)
@@ -494,19 +495,25 @@ static int svc_normal_to_secure_thread(void *data)
 			 (unsigned int)pdata->paddr, pdata->command,
 			 (unsigned int)pdata->size);
 
-		/* SDM can only processs one command at a time */
-		if (sdm_lock_owned == false) {
-			/* Must not do mutex re-lock */
-			pr_debug("%s: %s: Thread is waiting for mutex!\n",
-			__func__, chan->name);
-			mutex_lock(ctrl->sdm_lock);
+		/* SDM can only process one command at a time */
+		pr_debug("%s: %s: Thread is waiting for mutex!\n",
+			 __func__, chan->name);
+		if (mutex_lock_interruptible(&ctrl->sdm_lock)) {
+			/* item already dequeued; notify client to unblock it */
+			cbdata->status = BIT(SVC_STATUS_ERROR);
+			cbdata->kaddr1 = NULL;
+			cbdata->kaddr2 = NULL;
+			cbdata->kaddr3 = NULL;
+			if (pdata->chan->scl)
+				pdata->chan->scl->receive_cb(pdata->chan->scl,
+							     cbdata);
+			break;
 		}
-
-		sdm_lock_owned = true;
 
 		switch (pdata->command) {
 		case COMMAND_RECONFIG_DATA_CLAIM:
 			svc_thread_cmd_data_claim(ctrl, pdata, cbdata);
+			mutex_unlock(&ctrl->sdm_lock);
 			continue;
 		case COMMAND_RECONFIG:
 			a0 = INTEL_SIP_SMC_FPGA_CONFIG_START;
@@ -880,7 +887,8 @@ static int svc_normal_to_secure_thread(void *data)
 			break;
 		default:
 			pr_warn("it shouldn't happen\n");
-			break;
+			mutex_unlock(&ctrl->sdm_lock);
+			continue;
 		}
 		pr_debug("%s: %s: before SMC call -- a0=0x%016x a1=0x%016x",
 			 __func__, chan->name,
@@ -908,8 +916,7 @@ static int svc_normal_to_secure_thread(void *data)
 			cbdata->kaddr2 = NULL;
 			cbdata->kaddr3 = NULL;
 			pdata->chan->scl->receive_cb(pdata->chan->scl, cbdata);
-			mutex_unlock(ctrl->sdm_lock);
-			sdm_lock_owned = false;
+			mutex_unlock(&ctrl->sdm_lock);
 			continue;
 		}
 
@@ -1003,7 +1010,8 @@ static int svc_normal_to_secure_thread(void *data)
 				svc_pa_to_va(res.a2) : NULL;
 			cbdata->kaddr3 = (res.a3) ? &res.a3 : NULL;
 			pdata->chan->scl->receive_cb(pdata->chan->scl, cbdata);
-			break;
+			mutex_unlock(&ctrl->sdm_lock);
+			continue;
 		case INTEL_SIP_SMC_STATUS_NO_RESPONSE:
 			switch (pdata->command) {
 			case COMMAND_POLL_SERVICE_STATUS_ASYNC:
@@ -1031,10 +1039,10 @@ static int svc_normal_to_secure_thread(void *data)
 			break;
 
 		}
+
+		mutex_unlock(&ctrl->sdm_lock);
 	}
 	pr_debug("%s: %s: Exit thread\n", __func__, chan->name);
-	if (sdm_lock_owned == true)
-		mutex_unlock(ctrl->sdm_lock);
 	kfree(cbdata);
 	kfree(pdata);
 
@@ -1343,21 +1351,30 @@ int stratix10_svc_send(struct stratix10_svc_chan *chan, void *msg)
 	if (!p_data)
 		return -ENOMEM;
 
-	/* first client will create kernel thread */
+	/* first caller creates the per-channel kthread */
 	if (!chan->task) {
-		chan->task =
-			kthread_create_on_node(svc_normal_to_secure_thread,
-					      (void *)chan,
-					      cpu_to_node(cpu),
-					      "svc_smc_hvc_thread");
-			if (IS_ERR(chan->task)) {
-				dev_err(chan->ctrl->dev,
-					"failed to create svc_smc_hvc_thread\n");
-				kfree(p_data);
-				return -EINVAL;
-			}
-		kthread_bind(chan->task, cpu);
-		wake_up_process(chan->task);
+		struct task_struct *task;
+
+		task = kthread_create_on_cpu(svc_normal_to_secure_thread,
+					     (void *)chan,
+					     cpu, "svc_smc_hvc_thread");
+		if (IS_ERR(task)) {
+			dev_err(chan->ctrl->dev,
+				"failed to create svc_smc_hvc_thread\n");
+			kfree(p_data);
+			return -EINVAL;
+		}
+
+		spin_lock(&chan->lock);
+		if (chan->task) {
+			/* another caller won the race; discard our thread */
+			spin_unlock(&chan->lock);
+			kthread_stop(task);
+		} else {
+			chan->task = task;
+			spin_unlock(&chan->lock);
+			wake_up_process(task);
+		}
 	}
 
 	pr_debug("%s: %s: sent P-va=%p, P-com=%x, P-size=%u\n", __func__,
@@ -1510,7 +1527,12 @@ static const struct of_device_id stratix10_svc_drv_match[] = {
 	{},
 };
 
-static DEFINE_MUTEX(mailbox_lock);
+static const char * const chan_names[SVC_NUM_CHANNEL] = {
+	SVC_CLIENT_FPGA,
+	SVC_CLIENT_RSU,
+	SVC_CLIENT_FCS,
+	SVC_CLIENT_HWMON
+};
 
 static int stratix10_svc_drv_probe(struct platform_device *pdev)
 {
@@ -1519,11 +1541,11 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 	struct stratix10_svc_chan *chans;
 	struct gen_pool *genpool;
 	struct stratix10_svc_sh_memory *sh_memory;
-	struct stratix10_svc *svc;
+	struct stratix10_svc *svc = NULL;
 
 	svc_invoke_fn *invoke_fn;
 	size_t fifo_size;
-	int ret;
+	int ret, i = 0;
 
 	/* get SMC or HVC function */
 	invoke_fn = get_invoke_func(dev);
@@ -1559,63 +1581,24 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 	controller->chans = chans;
 	controller->genpool = genpool;
 	controller->invoke_fn = invoke_fn;
+	INIT_LIST_HEAD(&controller->node);
 	init_completion(&controller->complete_status);
 
-	/* This mutex is used to block threads from utilizing
-	 * SDM to prevent out of order command tx
-	 */
-	controller->sdm_lock = &mailbox_lock;
-
 	fifo_size = sizeof(struct stratix10_svc_data) * SVC_NUM_DATA_IN_FIFO;
+	mutex_init(&controller->sdm_lock);
 
-	chans[0].scl = NULL;
-	chans[0].ctrl = controller;
-	chans[0].name = SVC_CLIENT_FPGA;
-	spin_lock_init(&chans[0].lock);
-	ret = kfifo_alloc(&chans[0].svc_fifo, fifo_size, GFP_KERNEL);
-	if (ret) {
-		dev_err(dev, "failed to allocate FIFO 0\n");
-		return ret;
+	for (i = 0; i < SVC_NUM_CHANNEL; i++) {
+		chans[i].scl = NULL;
+		chans[i].ctrl = controller;
+		chans[i].name = (char *)chan_names[i];
+		spin_lock_init(&chans[i].lock);
+		ret = kfifo_alloc(&chans[i].svc_fifo, fifo_size, GFP_KERNEL);
+		if (ret) {
+			dev_err(dev, "failed to allocate FIFO %d\n", i);
+			goto err_free_fifos;
+		}
+		spin_lock_init(&chans[i].svc_fifo_lock);
 	}
-	spin_lock_init(&chans[0].svc_fifo_lock);
-
-	chans[1].scl = NULL;
-	chans[1].ctrl = controller;
-	chans[1].name = SVC_CLIENT_RSU;
-	spin_lock_init(&chans[1].lock);
-	ret = kfifo_alloc(&chans[1].svc_fifo, fifo_size, GFP_KERNEL);
-	if (ret) {
-		dev_err(dev, "failed to allocate FIFO 1\n");
-		return ret;
-	}
-	spin_lock_init(&chans[1].svc_fifo_lock);
-
-	chans[2].scl = NULL;
-	chans[2].ctrl = controller;
-	chans[2].name = SVC_CLIENT_FCS;
-	spin_lock_init(&chans[2].lock);
-	ret = kfifo_alloc(&chans[2].svc_fifo, fifo_size, GFP_KERNEL);
-	if (ret) {
-		dev_err(dev, "failed to allocate FIFO 2\n");
-		return ret;
-	}
-	spin_lock_init(&chans[2].svc_fifo_lock);
-
-	chans[3].scl = NULL;
-	chans[3].ctrl = controller;
-	chans[3].name = SVC_CLIENT_HWMON;
-	spin_lock_init(&chans[3].lock);
-	ret = kfifo_alloc(&chans[3].svc_fifo, fifo_size, GFP_KERNEL);
-	if (ret) {
-		dev_err(dev, "failed to allocate FIFO 3\n");
-		return ret;
-	}
-	spin_lock_init(&chans[3].svc_fifo_lock);
-
-	chans[3].scl = NULL;
-	chans[3].ctrl = controller;
-	chans[3].name = SVC_CLIENT_HWMON;
-	spin_lock_init(&chans[3].lock);
 
 	list_add_tail(&controller->node, &svc_ctrl);
 	platform_set_drvdata(pdev, controller);
@@ -1624,41 +1607,42 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 	svc = devm_kzalloc(dev, sizeof(*svc), GFP_KERNEL);
 	if (!svc) {
 		ret = -ENOMEM;
-		return ret;
+		goto err_free_fifos;
 	}
+	controller->svc = svc;
 
 	svc->stratix10_svc_rsu = platform_device_alloc(STRATIX10_RSU, 0);
 	if (!svc->stratix10_svc_rsu) {
 		dev_err(dev, "failed to allocate %s device\n", STRATIX10_RSU);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto err_free_fifos;
 	}
 
 	ret = platform_device_add(svc->stratix10_svc_rsu);
-	if (ret) {
-		platform_device_put(svc->stratix10_svc_rsu);
-		return ret;
-	}
+	if (ret)
+		goto err_put_device;
 
-	svc->intel_svc_fcs = platform_device_alloc(INTEL_FCS, 1);
-	if (!svc->intel_svc_fcs) {
-		dev_err(dev, "failed to allocate %s device\n", INTEL_FCS);
-		return -ENOMEM;
-	}
-
-	ret = platform_device_add(svc->intel_svc_fcs);
-	if (ret) {
-		platform_device_put(svc->intel_svc_fcs);
-		return ret;
-	}
-
-	dev_set_drvdata(dev, svc);
+	ret = of_platform_default_populate(dev_of_node(dev), NULL, dev);
+	if (ret)
+		goto err_unregister_rsu_dev;
 
 	pr_info("Intel Service Layer Driver Initialized\n");
 
 	return 0;
 
+err_unregister_rsu_dev:
+	platform_device_unregister(svc->stratix10_svc_rsu);
+	goto err_free_fifos;
 err_put_device:
 	platform_device_put(svc->stratix10_svc_rsu);
+err_free_fifos:
+	/* only remove from list if list_add_tail() was reached */
+	if (!list_empty(&controller->node))
+		list_del(&controller->node);
+	/* free only the FIFOs that were successfully allocated */
+	while (i--)
+		kfifo_free(&chans[i].svc_fifo);
+	gen_pool_destroy(genpool);
 
 	return ret;
 }
@@ -1666,10 +1650,11 @@ err_put_device:
 static int stratix10_svc_drv_remove(struct platform_device *pdev)
 {
 	int i;
-	struct stratix10_svc *svc = dev_get_drvdata(&pdev->dev);
 	struct stratix10_svc_controller *ctrl = platform_get_drvdata(pdev);
+	struct stratix10_svc *svc = ctrl->svc;
 
-	platform_device_unregister(svc->intel_svc_fcs);
+	of_platform_depopulate(ctrl->dev);
+
 	platform_device_unregister(svc->stratix10_svc_rsu);
 
 	for (i = 0; i < SVC_NUM_CHANNEL; i++) {
