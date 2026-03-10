@@ -35,10 +35,10 @@
  * Secure firmware completes service request successfully. In case of
  * FPGA configuration, FPGA should be in user mode.
  *
- * SVC_COMMAND_STATUS_BUSY:
+ * SVC_STATUS_BUSY:
  * Service request is still in process.
  *
- * SVC_COMMAND_STATUS_ERROR:
+ * SVC_STATUS_ERROR:
  * Error encountered during the process of the service request.
  *
  * SVC_STATUS_NO_SUPPORT:
@@ -156,7 +156,7 @@ struct stratix10_svc_chan;
  * measurements, return status is SVC_STATUS_SUBMITTED or SVC_STATUS_ERROR
  *
  * @COMMAND_POLL_SERVICE_STATUS: poll if the service request is complete,
- * return statis is SVC_STATUS_OK, SVC_STATUS_ERROR or SVC_STATUS_BUSY
+ * return status is SVC_STATUS_OK, SVC_STATUS_ERROR or SVC_STATUS_BUSY
  *
  * @COMMAND_FIRMWARE_VERSION: query running firmware version, return status
  * is SVC_STATUS_OK or SVC_STATUS_ERROR
@@ -375,7 +375,7 @@ struct stratix10_svc_chan
 void stratix10_svc_free_channel(struct stratix10_svc_chan *chan);
 
 /**
- * stratix10_svc_allocate_memory() - allocate the momory
+ * stratix10_svc_allocate_memory() - allocate memory
  * @chan: service channel assigned to the client
  * @size: number of bytes client requests
  *
@@ -415,4 +415,3 @@ int stratix10_svc_send(struct stratix10_svc_chan *chan, void *msg);
  */
 void stratix10_svc_done(struct stratix10_svc_chan *chan);
 #endif
-
