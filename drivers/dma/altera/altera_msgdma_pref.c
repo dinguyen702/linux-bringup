@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Altera FPGA Ethernet DMA driver
  * Copyright (C) 2026 Altera Corporation. All rights reserved
  *
@@ -32,7 +32,6 @@ static inline void altera_msgdma_dmaintr_enable(struct altera_msgdma_private *pr
 
 static inline void altera_msgdma_dmaintr_disable(struct altera_msgdma_private *priv)
 {
-	altera_msgdma_pref_clear_irq(priv);
 	dma_clear_bit(priv->pref_csr, msgdma_pref_csroffs(control),
 		      MSGDMA_PREF_CTL_GLOBAL_INTR);
 }
@@ -66,7 +65,7 @@ static int altera_request_and_map(struct platform_device *pdev, const char *name
 	return 0;
 }
 
-static void *mgdma_get_metadata_ptr(struct dma_async_tx_descriptor *tx,
+static void *msgdma_get_metadata_ptr(struct dma_async_tx_descriptor *tx,
 				    size_t *payload_len, size_t *max_len)
 {
 	struct altera_msgdma_private *priv = container_of(tx->chan,
@@ -115,7 +114,7 @@ static int msgdma_desc_free(struct dma_async_tx_descriptor *tx)
 }
 
 static struct dma_descriptor_metadata_ops msgdma_metadata_ops = {
-	.get_ptr = mgdma_get_metadata_ptr,
+	.get_ptr = msgdma_get_metadata_ptr,
 };
 
 static void coherent_mem_free(void *data)
@@ -233,7 +232,7 @@ static void altera_msgdma_confirm_fill_levels(struct altera_msgdma_private *priv
 			"DMA Resp Fill level never cleared! 0x%X\n", ret);
 }
 
-static void altera_msgdma_pref_quiese(struct altera_msgdma_private *priv)
+static void altera_msgdma_pref_quiesce(struct altera_msgdma_private *priv)
 {
 	int counter = 0;
 
@@ -280,7 +279,7 @@ static void altera_msgdma_pref_reset(struct altera_msgdma_private *priv)
 	dma_clear_bit(priv->pref_csr, msgdma_pref_csroffs(control),
 		      MSGDMA_PREF_CTL_DESC_POLL_EN);
 
-	altera_msgdma_pref_quiese(priv);
+	altera_msgdma_pref_quiesce(priv);
 
 	altera_msgdma_confirm_fill_levels(priv);
 
@@ -369,10 +368,13 @@ msgdma_pref_tx_buffer(struct altera_msgdma_private *priv,
 	unsigned long flags;
 	u32 desc_entry;
 
+	spin_lock_irqsave(&priv->dma_lock, flags);
+
 	desc_entry = (priv->pref_prod + priv->pref_pending) % priv->chan_ring_size;
 
 	if (unlikely(tx_descs[desc_entry].desc_control
 		     & MSGDMA_PREF_DESC_CTL_OWNED_BY_HW)) {
+		spin_unlock_irqrestore(&priv->dma_lock, flags);
 		dev_err(priv->dma_dev.dev,
 			"Tx: desc_entry %d MSGDMA_PREF_DESC_CTL_OWNED_BY_HW set", desc_entry);
 
@@ -393,8 +395,8 @@ msgdma_pref_tx_buffer(struct altera_msgdma_private *priv,
 	 * with slave so we need to keep note of how many buffers available to be
 	 * owned by Hardware
 	 */
-	spin_lock_irqsave(&priv->dma_lock, flags);
 	priv->pref_pending++;
+
 	spin_unlock_irqrestore(&priv->dma_lock, flags);
 
 	return &priv->async_tx[desc_entry];
@@ -408,10 +410,13 @@ msgdma_pref_add_rx_desc(struct altera_msgdma_private *priv,
 	unsigned long flags;
 	u32 desc_entry;
 
+	spin_lock_irqsave(&priv->dma_lock, flags);
+
 	desc_entry = (priv->pref_prod + priv->pref_pending) % priv->chan_ring_size;
 
 	if (unlikely(rx_descs[desc_entry].desc_control
 		     & MSGDMA_PREF_DESC_CTL_OWNED_BY_HW)) {
+		spin_unlock_irqrestore(&priv->dma_lock, flags);
 		dev_err(priv->dma_dev.dev,
 			"Rx: desc_entry %d MSGDMA_PREF_DESC_CTL_OWNED_BY_HW set", desc_entry);
 
@@ -435,8 +440,8 @@ msgdma_pref_add_rx_desc(struct altera_msgdma_private *priv,
 	 * with slave so we need to keep note of how many buffers available to be
 	 * owned by Hardware
 	 */
-	spin_lock_irqsave(&priv->dma_lock, flags);
 	priv->pref_pending++;
+
 	spin_unlock_irqrestore(&priv->dma_lock, flags);
 
 	return &priv->async_tx[desc_entry];
@@ -675,6 +680,7 @@ static void altera_msgdma_slave_caps(struct dma_chan *dchan,
 
 	caps->residue_granularity = DMA_RESIDUE_GRANULARITY_DESCRIPTOR;
 	caps->descriptor_reuse = false;
+	caps->cmd_pause = true;
 	caps->min_burst = 1;
 	caps->max_burst = priv->prefetch_capability;
 	caps->max_sg_burst = SG_NO_SUPPORT;

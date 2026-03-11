@@ -7,126 +7,125 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: Altera SoCFPGA mSGDMA Prefetcher Controller
 
 maintainers:
-	- SED-TEAM <psse-ba-sed@altera.com>
+  - SED-TEAM <psse-ba-sed@altera.com>
 
 description: |
-	Altera SoCFPGA mSGDMA Prefetcher Controller for high-performance
-	DMA transfers on SoCFPGA platforms.
+  Altera SoCFPGA mSGDMA Prefetcher Controller for high-performance
+  DMA transfers on SoCFPGA platforms.
 
 properties:
-	compatible:
-	const: altr,socfpga-pref-msgdma
+  compatible:
+    const: altr,socfpga-pref-msgdma
 
-	reg:
-	minItems: 3
-	maxItems: 3
-	description: Three register regions "pref_csr", "dma_csr", and "fifo_info".
+  reg:
+    minItems: 3
+    maxItems: 3
+    description: Three register regions "pref_csr", "dma_csr", and "fifo_info".
 
-	reg-names:
-	minItems: 3
-	maxItems: 3
-	items:
-	- const: pref_csr
-	- const: dma_csr
-	- const: fifo_info
+  reg-names:
+    minItems: 3
+    maxItems: 3
+    items:
+      - const: pref_csr
+      - const: dma_csr
+      - const: fifo_info
 
-	interrupts:
-	maxItems: 1
-	description: |
-	GIC interrupt specifier for the DMA controller, encoded as
-	<type number flags> per the GIC binding.
+  interrupts:
+    maxItems: 1
+    description: |
+      GIC interrupt specifier for the DMA controller, encoded as
+      <type number flags> per the GIC binding.
 
-	interrupt-parent:
-	description: Phandle to the GIC interrupt controller.
+  interrupt-parent:
+    description: Phandle to the GIC interrupt controller.
 
-	interrupt-names:
-	items:
-	- const: dma-irq
+  interrupt-names:
+    items:
+      - const: dma-irq
 
-	'#dma-cells':
-	const: 1
-	description: Number of cells in the DMA specifier (channel index).
+  '#dma-cells':
+    const: 1
+    description: Number of cells in the DMA specifier (channel index).
 
-	channel-name:
-	$ref: /schemas/types.yaml#/definitions/string
-	description: |
-	Human-readable name for this DMA channel, used to identify
-	the channel in the driver (e.g. "dma0_tx0").
+  channel-name:
+    $ref: /schemas/types.yaml#/definitions/string
+    description: |
+      Human-readable name for this DMA channel, used to identify
+      the channel in the driver (e.g. "dma0_tx0").
 
-	fifo-depth:
-	$ref: /schemas/types.yaml#/definitions/uint32
-	description: Depth of the FIFO buffer in the DMA engine.
+  fifo-depth:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: Depth of the FIFO buffer in the DMA engine.
 
-	fifo-almost-full:
-	$ref: /schemas/types.yaml#/definitions/uint32
-	description: FIFO threshold for the 'almost full' condition.
+  fifo-almost-full:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: FIFO threshold for the 'almost full' condition.
 
-	fifo-almost-empty:
-	$ref: /schemas/types.yaml#/definitions/uint32
-	description: FIFO threshold for the 'almost empty' condition.
+  fifo-almost-empty:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: FIFO threshold for the 'almost empty' condition.
 
-	poll-freq:
-	$ref: /schemas/types.yaml#/definitions/uint32
-	description: |
-	Descriptor polling frequency for the prefetcher engine.
-	Defaults to 128 if not specified.
+  poll-freq:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: |
+      Descriptor polling frequency for the prefetcher engine.
+      Defaults to 128 if not specified.
 
-	prefetch-capability:
-	$ref: /schemas/types.yaml#/definitions/uint32
-	description: |
-	Maximum number of descriptors the prefetcher can pre-fetch.
-	Defaults to 0x10 if not specified. Typically set on RX channels.
+  prefetch-capability:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: |
+      Maximum number of descriptors the prefetcher can pre-fetch.
+      Defaults to 0x10 if not specified. Typically set on RX channels.
 
 required:
-	- compatible
-	- reg
-	- reg-names
-	- interrupts
-	- interrupt-names
-	- '#dma-cells'
-	- fifo-depth
-	- fifo-almost-full
-	- fifo-almost-empty
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - interrupt-names
+  - '#dma-cells'
+  - fifo-depth
+  - fifo-almost-full
+  - fifo-almost-empty
 
 additionalProperties: false
 
 examples:
-	- |
-	#include <dt-bindings/interrupt-controller/arm-gic.h>
-	#include <dt-bindings/interrupt-controller/irq.h>
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    #include <dt-bindings/interrupt-controller/irq.h>
 
-	/* TX channel - prefetch-capability is optional */
-	dma0_tx0: dma0_tx0 {
-	compatible = "altr,socfpga-pref-msgdma";
-	channel-name = "dma0_tx0";
-	reg-names = "pref_csr", "dma_csr", "fifo_info";
-	reg = <0x45000000 0x20>,
-	<0x45000020 0x20>,
-	<0x45000040 0x20>;
-	#dma-cells = <1>;
-	interrupt-parent = <&intc>;
-	interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
-	interrupt-names = "dma-irq";
-	fifo-depth = <0x1000>;
-	fifo-almost-full = <0x800>;
-	fifo-almost-empty = <0x400>;
-	};
+    /* TX channel - prefetch-capability is optional */
+    dma0_tx0: dma0_tx0 {
+        compatible = "altr,socfpga-pref-msgdma";
+        channel-name = "dma0_tx0";
+        reg-names = "pref_csr", "dma_csr", "fifo_info";
+        reg = <0x45000000 0x20>,
+              <0x45000020 0x20>,
+              <0x45000040 0x20>;
+        #dma-cells = <1>;
+        interrupt-parent = <&intc>;
+        interrupts = <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>;
+        interrupt-names = "dma-irq";
+        fifo-depth = <0x1000>;
+        fifo-almost-full = <0x800>;
+        fifo-almost-empty = <0x400>;
+    };
 
-	/* RX channel - includes prefetch-capability */
-	dma0_rx0: dma0_rx0 {
-	compatible = "altr,socfpga-pref-msgdma";
-	channel-name = "dma0_rx0";
-	reg-names = "pref_csr", "dma_csr", "fifo_info";
-	reg = <0x45000080 0x20>,
-	<0x450000a0 0x20>,
-	<0x450000c0 0x20>;
-	#dma-cells = <1>;
-	interrupt-parent = <&intc>;
-	interrupts = <GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>;
-	interrupt-names = "dma-irq";
-	fifo-depth = <0x4000>;
-	fifo-almost-full = <0x2000>;
-	fifo-almost-empty = <0x1000>;
-	prefetch-capability = <16>;
-	};
-
+    /* RX channel - includes prefetch-capability */
+    dma0_rx0: dma0_rx0 {
+        compatible = "altr,socfpga-pref-msgdma";
+        channel-name = "dma0_rx0";
+        reg-names = "pref_csr", "dma_csr", "fifo_info";
+        reg = <0x45000080 0x20>,
+              <0x450000a0 0x20>,
+              <0x450000c0 0x20>;
+        #dma-cells = <1>;
+        interrupt-parent = <&intc>;
+        interrupts = <GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>;
+        interrupt-names = "dma-irq";
+        fifo-depth = <0x4000>;
+        fifo-almost-full = <0x2000>;
+        fifo-almost-empty = <0x1000>;
+        prefetch-capability = <16>;
+    };
