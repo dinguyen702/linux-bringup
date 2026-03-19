@@ -935,6 +935,12 @@ void sdhci_cdns6_set_uhs_signaling(struct sdhci_host *host, unsigned int timing)
 	struct sdhci_cdns_priv *priv = sdhci_cdns_get_priv(host);
 	struct sdhci_cdns6_phy *phy = priv->phy;
 
+	if (!host->mmc->ios.clock) {
+		dev_dbg(mmc_dev(host->mmc), "%s: clock is 0, skipping PHY update\n",
+			__func__);
+		return;
+	}
+
 	phy->t_sdclk = DIV_ROUND_DOWN_ULL(1000000000000ULL, host->mmc->ios.clock);
 	phy->mode = timing;
 
@@ -953,6 +959,6 @@ void sdhci_cdns6_hw_reset(struct sdhci_host *host)
 	reg = priv->hrs_addr + SDHCI_CDNS_HRS11;
 	writel(SDHCI_CDNS_HRS11_EMMC_RST, reg);
 	udelay(9);
-	writel(!SDHCI_CDNS_HRS11_EMMC_RST, reg);
+	writel(0, reg);
 	usleep_range(300, 1000);
 }

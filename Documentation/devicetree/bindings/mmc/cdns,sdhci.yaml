@@ -35,10 +35,20 @@ properties:
     maxItems: 1
 
   clocks:
-    maxItems: 1
+    minItems: 1
+    maxItems: 2
+
+  clock-names:
+    minItems: 1
+    maxItems: 2
 
   resets:
-    maxItems: 1
+    minItems: 1
+    maxItems: 3
+
+  reset-names:
+    minItems: 1
+    maxItems: 3
 
   # PHY DLL input delays:
   # They are used to delay the data valid window, and align the window to
@@ -175,6 +185,19 @@ allOf:
     then:
       description: SD6HC variant - use IO-cell and delay element properties
       properties:
+        clocks:
+          minItems: 2
+          maxItems: 2
+        clock-names:
+          items:
+            - const: biu
+            - const: ciu
+        resets:
+          minItems: 1
+          maxItems: 3
+        reset-names:
+          minItems: 1
+          maxItems: 3
         cdns,phy-input-delay-sd-highspeed: false
         cdns,phy-input-delay-legacy: false
         cdns,phy-input-delay-sd-uhs-sdr12: false
@@ -195,6 +218,10 @@ allOf:
     then:
       description: SD4HC variant - use legacy DLL delay properties
       properties:
+        clocks:
+          maxItems: 1
+        resets:
+          maxItems: 1
         cdns,iocell-input-delay: false
         cdns,iocell-output-delay: false
         cdns,delay-element: false
