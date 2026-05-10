@@ -1073,12 +1073,21 @@ struct stratix10_svc_chan *stratix10_svc_request_channel_byname(
 		return ERR_PTR(-EINVAL);
 	}
 
-	if (chan->scl || !try_module_get(controller->dev->driver->owner)) {
+	/*
+	 * Claim the channel under chan->lock so two concurrent callers
+	 * cannot both pass the busy check and both grab a module ref.
+	 */
+	spin_lock_irqsave(&chan->lock, flag);
+	if (chan->scl) {
+		spin_unlock_irqrestore(&chan->lock, flag);
 		dev_dbg(dev, "%s: svc not free\n", __func__);
 		return ERR_PTR(-EBUSY);
 	}
-
-	spin_lock_irqsave(&chan->lock, flag);
+	if (!try_module_get(controller->dev->driver->owner)) {
+		spin_unlock_irqrestore(&chan->lock, flag);
+		dev_dbg(dev, "%s: module is going away\n", __func__);
+		return ERR_PTR(-EBUSY);
+	}
 	chan->scl = client;
 	chan->ctrl->num_active_client++;
 	spin_unlock_irqrestore(&chan->lock, flag);
@@ -2004,13 +2013,15 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 
 	ret = of_platform_default_populate(dev_of_node(dev), NULL, dev);
 	if (ret)
-		goto err_unregister_rsu_dev;
+		goto err_depopulate;
 
 	pr_info("Intel Service Layer Driver Initialized\n");
 
 	return 0;
 
-err_unregister_rsu_dev:
+err_depopulate:
+	/* clean up any children that of_platform_default_populate created */
+	of_platform_depopulate(dev);
 	platform_device_unregister(svc->stratix10_svc_rsu);
 	goto err_free_fifos;
 err_put_device:
