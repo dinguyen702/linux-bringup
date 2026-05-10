@@ -253,6 +253,8 @@ struct stratix10_async_ctrl {
  * @svc: manages the list of client svc drivers
  * @sdm_lock: only allows a single command single response to SDM
  * @actrl: async control structure
+ * @data_mem: list of buffers allocated from this controller's memory pool
+ * @data_mem_lock: protects access to @data_mem
  *
  * This struct is used to create communication channels for service clients, to
  * handle secure monitor or hypervisor call.
@@ -269,6 +271,8 @@ struct stratix10_svc_controller {
 	struct stratix10_svc *svc;
 	struct mutex sdm_lock;
 	struct stratix10_async_ctrl actrl;
+	struct list_head data_mem;
+	struct mutex data_mem_lock;
 };
 
 /**
@@ -297,28 +301,23 @@ struct stratix10_svc_chan {
 };
 
 static LIST_HEAD(svc_ctrl);
-static LIST_HEAD(svc_data_mem);
-
-/*
- * svc_mem_lock protects access to the svc_data_mem list for
- * concurrent multi-client operations
- */
-static DEFINE_MUTEX(svc_mem_lock);
 
 /**
  * svc_pa_to_va() - translate physical address to virtual address
+ * @ctrl: service controller that owns the buffer
  * @addr: to be translated physical address
  *
  * Return: valid virtual address or NULL if the provided physical
  * address doesn't exist.
  */
-static void *svc_pa_to_va(unsigned long addr)
+static void *svc_pa_to_va(struct stratix10_svc_controller *ctrl,
+			  unsigned long addr)
 {
 	struct stratix10_svc_data_mem *pmem;
 
 	pr_debug("claim back P-addr=0x%016x\n", (unsigned int)addr);
-	guard(mutex)(&svc_mem_lock);
-	list_for_each_entry(pmem, &svc_data_mem, node)
+	guard(mutex)(&ctrl->data_mem_lock);
+	list_for_each_entry(pmem, &ctrl->data_mem, node)
 		if (pmem->paddr == addr)
 			return pmem->vaddr;
 
@@ -356,11 +355,11 @@ static void svc_thread_cmd_data_claim(struct stratix10_svc_controller *ctrl,
 				break;
 			}
 			cb_data->status = BIT(SVC_STATUS_BUFFER_DONE);
-			cb_data->kaddr1 = svc_pa_to_va(res.a1);
+			cb_data->kaddr1 = svc_pa_to_va(ctrl, res.a1);
 			cb_data->kaddr2 = (res.a2) ?
-					  svc_pa_to_va(res.a2) : NULL;
+					  svc_pa_to_va(ctrl, res.a2) : NULL;
 			cb_data->kaddr3 = (res.a3) ?
-					  svc_pa_to_va(res.a3) : NULL;
+					  svc_pa_to_va(ctrl, res.a3) : NULL;
 			p_data->chan->scl->receive_cb(p_data->chan->scl,
 						      cb_data);
 		} else {
@@ -425,13 +424,13 @@ static void svc_thread_cmd_config_status(struct stratix10_svc_controller *ctrl,
 	} else if (res.a0 == INTEL_SIP_SMC_STATUS_OK) {
 		cb_data->status = BIT(SVC_STATUS_COMPLETED);
 		cb_data->kaddr2 = (res.a2) ?
-				  svc_pa_to_va(res.a2) : NULL;
+				  svc_pa_to_va(ctrl, res.a2) : NULL;
 		cb_data->kaddr3 = (res.a3) ? &res.a3 : NULL;
 	} else {
 		pr_err("%s: poll status error\n", __func__);
 		cb_data->kaddr1 = &res.a1;
 		cb_data->kaddr2 = (res.a2) ?
-				  svc_pa_to_va(res.a2) : NULL;
+				  svc_pa_to_va(ctrl, res.a2) : NULL;
 		cb_data->kaddr3 = (res.a3) ? &res.a3 : NULL;
 		cb_data->status = BIT(SVC_STATUS_ERROR);
 	}
@@ -495,7 +494,7 @@ static void svc_thread_recv_status_ok(struct stratix10_svc_data *p_data,
 	case COMMAND_POLL_SERVICE_STATUS:
 		cb_data->status = BIT(SVC_STATUS_OK);
 		cb_data->kaddr1 = &res.a1;
-		cb_data->kaddr2 = svc_pa_to_va(res.a2);
+		cb_data->kaddr2 = svc_pa_to_va(p_data->chan->ctrl, res.a2);
 		cb_data->kaddr3 = &res.a3;
 		break;
 	case COMMAND_MBOX_SEND_CMD:
@@ -794,7 +793,7 @@ static int svc_normal_to_secure_thread(void *data)
 			cbdata->status = BIT(SVC_STATUS_ERROR);
 			cbdata->kaddr1 = &res.a1;
 			cbdata->kaddr2 = (res.a2) ?
-				svc_pa_to_va(res.a2) : NULL;
+				svc_pa_to_va(ctrl, res.a2) : NULL;
 			cbdata->kaddr3 = (res.a3) ? &res.a3 : NULL;
 			pdata->chan->scl->receive_cb(pdata->chan->scl, cbdata);
 			break;
@@ -1744,7 +1743,7 @@ int stratix10_svc_send(struct stratix10_svc_chan *chan, void *msg)
 		 chan->name, p_msg->payload, p_msg->command,
 		 (unsigned int)p_msg->payload_length);
 
-	if (list_empty(&svc_data_mem)) {
+	if (list_empty(&chan->ctrl->data_mem)) {
 		if (p_msg->command == COMMAND_RECONFIG) {
 			struct stratix10_svc_command_config_type *ct =
 				(struct stratix10_svc_command_config_type *)
@@ -1752,15 +1751,15 @@ int stratix10_svc_send(struct stratix10_svc_chan *chan, void *msg)
 			p_data->flag = ct->flags;
 		}
 	} else {
-		guard(mutex)(&svc_mem_lock);
-		list_for_each_entry(p_mem, &svc_data_mem, node)
+		guard(mutex)(&chan->ctrl->data_mem_lock);
+		list_for_each_entry(p_mem, &chan->ctrl->data_mem, node)
 			if (p_mem->vaddr == p_msg->payload) {
 				p_data->paddr = p_mem->paddr;
 				p_data->size = p_msg->payload_length;
 				break;
 			}
 		if (p_msg->payload_output) {
-			list_for_each_entry(p_mem, &svc_data_mem, node)
+			list_for_each_entry(p_mem, &chan->ctrl->data_mem, node)
 				if (p_mem->vaddr == p_msg->payload_output) {
 					p_data->paddr_output =
 						p_mem->paddr;
@@ -1840,7 +1839,7 @@ void *stratix10_svc_allocate_memory(struct stratix10_svc_chan *chan,
 	if (!pmem)
 		return ERR_PTR(-ENOMEM);
 
-	guard(mutex)(&svc_mem_lock);
+	guard(mutex)(&chan->ctrl->data_mem_lock);
 	va = gen_pool_alloc(genpool, s);
 	if (!va) {
 		kfree(pmem);
@@ -1853,7 +1852,7 @@ void *stratix10_svc_allocate_memory(struct stratix10_svc_chan *chan,
 	pmem->vaddr = (void *)va;
 	pmem->paddr = pa;
 	pmem->size = s;
-	list_add_tail(&pmem->node, &svc_data_mem);
+	list_add_tail(&pmem->node, &chan->ctrl->data_mem);
 	pr_debug("%s: %s: va=%p, pa=0x%016x\n", __func__,
 		 chan->name, pmem->vaddr, (unsigned int)pmem->paddr);
 
@@ -1872,9 +1871,9 @@ void stratix10_svc_free_memory(struct stratix10_svc_chan *chan, void *kaddr)
 {
 	struct stratix10_svc_data_mem *pmem;
 
-	guard(mutex)(&svc_mem_lock);
+	guard(mutex)(&chan->ctrl->data_mem_lock);
 
-	list_for_each_entry(pmem, &svc_data_mem, node) {
+	list_for_each_entry(pmem, &chan->ctrl->data_mem, node) {
 		if (pmem->vaddr == kaddr) {
 			gen_pool_free(chan->ctrl->genpool,
 				      (unsigned long)kaddr, pmem->size);
@@ -1884,7 +1883,7 @@ void stratix10_svc_free_memory(struct stratix10_svc_chan *chan, void *kaddr)
 		}
 	}
 
-	dev_warn(chan->ctrl->dev, "%s: kaddr %p not found in svc_data_mem\n",
+	dev_warn(chan->ctrl->dev, "%s: kaddr %p not found in data_mem list\n",
 		 __func__, kaddr);
 }
 EXPORT_SYMBOL_GPL(stratix10_svc_free_memory);
@@ -1954,6 +1953,8 @@ static int stratix10_svc_drv_probe(struct platform_device *pdev)
 	controller->genpool = genpool;
 	controller->invoke_fn = invoke_fn;
 	INIT_LIST_HEAD(&controller->node);
+	INIT_LIST_HEAD(&controller->data_mem);
+	mutex_init(&controller->data_mem_lock);
 	init_completion(&controller->complete_status);
 
 	ret = stratix10_svc_async_init(controller);
@@ -2033,6 +2034,7 @@ static void stratix10_svc_drv_remove(struct platform_device *pdev)
 	int i;
 	struct stratix10_svc_controller *ctrl = platform_get_drvdata(pdev);
 	struct stratix10_svc *svc = ctrl->svc;
+	struct stratix10_svc_data_mem *pmem, *tmp;
 
 	stratix10_svc_async_exit(ctrl);
 
@@ -2047,6 +2049,24 @@ static void stratix10_svc_drv_remove(struct platform_device *pdev)
 		}
 		kfifo_free(&ctrl->chans[i].svc_fifo);
 	}
+
+	/*
+	 * Release any service-allocated buffers a client forgot to free.
+	 * Must run before gen_pool_destroy() so the pool entries are
+	 * accounted for.
+	 */
+	mutex_lock(&ctrl->data_mem_lock);
+	list_for_each_entry_safe(pmem, tmp, &ctrl->data_mem, node) {
+		dev_warn(ctrl->dev,
+			 "leaked buffer va=%p pa=0x%016llx size=%zu, reclaiming\n",
+			 pmem->vaddr, (unsigned long long)pmem->paddr,
+			 pmem->size);
+		gen_pool_free(ctrl->genpool, (unsigned long)pmem->vaddr,
+			      pmem->size);
+		list_del(&pmem->node);
+		kfree(pmem);
+	}
+	mutex_unlock(&ctrl->data_mem_lock);
 
 	if (ctrl->genpool)
 		gen_pool_destroy(ctrl->genpool);
